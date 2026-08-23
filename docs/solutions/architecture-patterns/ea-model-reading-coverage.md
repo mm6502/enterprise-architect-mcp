@@ -225,11 +225,18 @@ feature — `node:sqlite` exposes no collation registration, and ICU is not comp
 build. Binary collation puts every accented initial after `Z`, affecting ~2,570 element names and
 ~400 package names (3.9% and 3.8%).
 
-**Decided:** order after retrieval with `Intl.Collator`, measured at 0.71–1.53 ms per 500 names.
-The locale is not hardcoded: `EA_LOCALE` sets it and the host locale is the default, because the
-export does not record which language it is written in. The effect is narrower than it sounds and
-that is the danger: in every affected tool `Name` is a *secondary* key, so the misordering happens
-inside each group and reads as a plausible list rather than a broken one.
+**Decided:** don't order enumeration by name at all. `ea_search`, `ea_list_elements` and
+`ea_list_diagrams` order by storage identity, because these tools return a *window* and any
+alphabetical cut selects against accented initials rather than merely reordering them: measured
+across the packages that truncate, accented initials held 1.3% of visible slots under binary
+ordering and 2.0% under collation, against 3.0% under identity order and 3.9% model-wide. The
+artificiality is stated in each tool description so no agent reads meaning into adjacency.
+
+Retrieval-time collation with `Intl.Collator` — measured at 0.71–1.53 ms per 500 names, locale from
+`EA_LOCALE` with the host default, since the export does not record its language — survives only in
+`ea_get_scenarios`, where the whole set is returned and truncation cannot happen. That boundary is
+the point: collation is a presentation choice when everything is shown and a selection bias when it
+is not.
 
 ### Tagged values are not worth a typed tool
 

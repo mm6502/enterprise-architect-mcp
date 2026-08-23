@@ -2,6 +2,7 @@ import { READ_ONLY } from "./annotations.js";
 import { z } from "zod";
 import { decodeEntities, foldText } from "../text.js";
 import { buildPackagePath } from "../package-path.js";
+import { breakdownApplies, buildBreakdown, buildContinuation, countBy, isTruncated, limitParam, offsetParam } from "./windowing.js";
 // Reuse feature link parsing from connectors — import the module's export
 // Since the feature link logic is internal to connectors, we inline a lightweight version here
 const FEATURE_LINK_RE = /LF([SE])P=\{([^}]+)\}[^;]*/g;
@@ -148,11 +149,13 @@ export function configureDiagramTools(server, model) {
         }
     });
     // R7: List and search diagrams
-    server.tool("ea_list_diagrams", "List diagrams in the model, optionally filtered by package and/or name substring. Each entry in `results` carries `diagramId`, `name`, `type`, `packagePath`, and `eaGuid`.", {
+    server.tool("ea_list_diagrams", "List diagrams in the model, optionally filtered by package, diagram type, and/or name substring. Each entry in `results` carries `diagramId`, `name`, `type`, `packagePath`, and `eaGuid`. Diagrams are ordered by the model's internal identity \u2014 stable but artificial, neither alphabetical nor the analyst's tree order \u2014 so adjacency carries no meaning. Walk a large result set with `offset` rather than a larger `limit`; while rows remain, `continuation` names the next call. When far more diagrams match than one window can hold, `breakdown` reports how many each type holds, so the next call can narrow by `diagramType` instead of paging.", {
         packageId: z.coerce.number().optional().describe("Filter to diagrams in this package"),
+        diagramType: z.string().optional().describe("Filter by diagram type (e.g., Logical, Use Case, Sequence, Activity, Component)"),
         nameContains: z.string().optional().describe("Filter to diagrams whose name contains this substring (case- and diacritic-insensitive across European Latin alphabets)"),
-        limit: z.coerce.number().default(50).describe("Maximum number of results (default 50)"),
-    }, READ_ONLY, async ({ packageId, nameContains, limit }) => {
+        limit: limitParam(50),
+        offset: offsetParam,
+    }, READ_ONLY, async ({ packageId, diagramType, nameContains, limit, offset }) => {
         const db = await model.database();
         try {
             if (packageId != null) {
@@ -170,6 +173,13 @@ export function configureDiagramTools(server, model) {
                 sql += " AND Package_ID = ?";
                 params.push(packageId);
             }
+            if (diagramType) {
+                sql += " AND Diagram_Type = ?";
+                params.push(diagramType);
+            }
+            // nameContains folds text, which SQLite cannot do, so the window is applied
+            // in JS below; the ORDER BY is what makes that window repeatable.
+            sql += " ORDER BY Diagram_ID";
             const allRows = db.prepare(sql).all(...params);
             let filtered = allRows;
             if (nameContains) {
@@ -177,21 +187,29 @@ export function configureDiagramTools(server, model) {
                 filtered = allRows.filter((r) => foldText(r.Name || "").includes(folded));
             }
             const totalMatched = filtered.length;
-            const truncated = filtered.length > limit;
-            const results = filtered.slice(0, limit).map((r) => ({
+            const window = filtered.slice(offset, offset + limit);
+            const truncated = isTruncated(offset, window.length, totalMatched);
+            const results = window.map((r) => ({
                 diagramId: r.Diagram_ID,
                 name: r.Name,
                 type: r.Diagram_Type,
                 packagePath: buildPackagePath(db, r.Package_ID),
                 eaGuid: r.ea_guid,
             }));
-            const response = { results, totalMatched, returned: results.length, truncated, _meta: { sourceTables: ["t_diagram", "t_package"] } };
-            if (truncated) {
-                response.continuation = {
-                    tool: "ea_list_diagrams",
-                    arguments: { packageId, nameContains, limit: Math.max(limit * 2, totalMatched) },
-                };
-            }
+            const breakdown = !diagramType && breakdownApplies(totalMatched, limit)
+                ? buildBreakdown({ diagramType: countBy(filtered, (r) => r.Diagram_Type) })
+                : undefined;
+            const continuation = buildContinuation("ea_list_diagrams", { packageId, diagramType, nameContains, limit }, offset, results.length, totalMatched);
+            const response = {
+                results,
+                totalMatched,
+                returned: results.length,
+                offset,
+                truncated,
+                ...(breakdown ? { breakdown } : {}),
+                ...(continuation ? { continuation } : {}),
+                _meta: { sourceTables: ["t_diagram", "t_package"] },
+            };
             return {
                 content: [{ type: "text", text: JSON.stringify(response, null, 2) }],
             };

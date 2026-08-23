@@ -6,6 +6,7 @@ import type { SQLInputValue } from "node:sqlite";
 import { z } from "zod";
 import { buildPackagePath } from "../package-path.js";
 import { decodeEntities } from "../text.js";
+import { breakdownApplies, buildBreakdown, buildContinuation, isTruncated, limitParam, offsetParam } from "./windowing.js";
 
 const MAX_INLINE_ITEMS = 50;
 
@@ -161,17 +162,18 @@ export function configureElementTools(server: McpServer, model: ModelAccess): vo
 
   server.tool(
     "ea_list_elements",
-    "List elements within a package, optionally filtered by object type. `elements` is a lightweight list (ID, type, name, alias, stereotype).",
+    "List elements within a package, optionally filtered by object type. `elements` is a lightweight list (ID, type, name, alias, stereotype), grouped by element type and then ordered by the model's internal identity. That order is stable but artificial \u2014 neither alphabetical nor the analyst's tree order \u2014 so adjacency carries no meaning. Walk a large package with `offset` rather than a larger `limit`; while rows remain, `continuation` names the next call. When far more elements match than one window can hold, `breakdown` reports how many each type holds, so the next call can narrow by `objectType` instead of paging.",
     {
       packageId: z.coerce.number().describe("The Package_ID to list elements from"),
       objectType: z
         .string()
         .optional()
         .describe("Filter by object type (e.g., Class, UseCase, Activity, Screen)"),
-      limit: z.coerce.number().default(50).describe("Maximum number of results (default 50)"),
+      limit: limitParam(50),
+      offset: offsetParam,
     },
     READ_ONLY,
-    async ({ packageId, objectType, limit }) => {
+    async ({ packageId, objectType, limit, offset }) => {
       const db = await model.database();
       try {
         // Verify package exists
@@ -195,8 +197,10 @@ export function configureElementTools(server: McpServer, model: ModelAccess): vo
           params.push(objectType);
         }
 
-        sql += " ORDER BY Object_Type, Name LIMIT ?";
-        params.push(limit);
+        // Identity, not Name: SQLite's binary collation sorts every accented initial
+        // past Z, which systematically exiles them from a truncated window.
+        sql += " ORDER BY Object_Type, Object_ID LIMIT ? OFFSET ?";
+        params.push(limit, offset);
 
         const rows = db.prepare(sql).all(...params) as any[];
 
@@ -208,14 +212,34 @@ export function configureElementTools(server: McpServer, model: ModelAccess): vo
           countParams.push(objectType);
         }
         const totalMatched = (db.prepare(countSql).get(...countParams) as any).cnt;
-        const truncated = rows.length < totalMatched;
+        const truncated = isTruncated(offset, rows.length, totalMatched);
+
+        let breakdown: Record<string, unknown> | undefined;
+        if (!objectType && breakdownApplies(totalMatched, limit)) {
+          const typeRows = db
+            .prepare("SELECT Object_Type, COUNT(*) as cnt FROM t_object WHERE Package_ID = ? GROUP BY Object_Type")
+            .all(packageId) as any[];
+          breakdown = buildBreakdown({
+            objectType: new Map(typeRows.filter((r) => r.Object_Type).map((r) => [String(r.Object_Type), r.cnt])),
+          });
+        }
+
+        const continuation = buildContinuation(
+          "ea_list_elements",
+          { packageId, objectType, limit },
+          offset,
+          rows.length,
+          totalMatched
+        );
 
         const response = {
           elements: rows,
           totalMatched,
           returned: rows.length,
+          offset,
           truncated,
-          ...(truncated ? { continuation: { tool: "ea_list_elements", arguments: { packageId, objectType, limit: Math.max(limit * 2, totalMatched) } } } : {}),
+          ...(breakdown ? { breakdown } : {}),
+          ...(continuation ? { continuation } : {}),
           _meta: { sourceTables: ["t_object"] },
         };
         return {

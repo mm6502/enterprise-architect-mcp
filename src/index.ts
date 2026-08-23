@@ -42,7 +42,9 @@ Response shape contract:
 - Every collection carries totalMatched, returned, truncated (always present, even when truncated: false).
 - _meta.sourceTables lists which database tables the response draws from.
 - ea_get_diagram_elements returns per-collection metadata in _meta.elements and _meta.connectors (not top-level) because it returns two independent collections.
-- When truncated: true, a continuation object provides the exact call that retrieves the full set.
+- The enumeration tools (ea_search, ea_list_elements, ea_list_diagrams) return a window: they accept offset, echo it back, and order results deterministically. That order is stable but artificial — not alphabetical and not the analyst's tree order — so never infer meaning from adjacency.
+- When truncated: true, a continuation object provides the exact call that returns the next window. Following it repeatedly visits every matching row once and terminates; do not raise limit to fetch a large set in one call.
+- When far more rows match than one window holds, a breakdown object reports how they distribute. Every key in it is a parameter name and every value is an argument value, so a breakdown is an invitation to narrow the next call rather than page through the set. Each axis reports totalMatched/returned/truncated for its own list of distinct values, not for rows, and rows carrying no value on that axis are not counted — so the counts need not sum to the response's totalMatched.
 - Not-found errors (non-existent element/package/diagram ID) return isError: true with structured JSON — distinct from a valid empty result.
 - When reporting that something is absent from the model, cite totalMatched, truncated and _meta.sourceTables from the response that supports the claim. An empty result is not evidence of absence unless the subject is confirmed to exist.
 

@@ -124,10 +124,32 @@ reconfiguring anything.
 ### Name ordering
 
 Matching is locale-independent — search folds case and diacritics across European Latin alphabets,
-so `Straße`, `Łódź` and `Győr` are found however they are typed or entity-encoded. Only the *order*
-names appear in is locale-dependent, and the export does not record which language it is written in.
-Set `EA_LOCALE` to a BCP 47 tag (`sk`, `pl`, `hu`, `de`, …) in an `env` block or system env to pin
-it; unset, the host default applies.
+so `Straße`, `Łódź` and `Győr` are found however they are typed or entity-encoded.
+
+The enumeration tools — `ea_search`, `ea_list_elements`, `ea_list_diagrams` — do not order by name
+at all. They order by the model's internal identity: stable and repeatable, but artificial, so
+nothing should be read into which row follows which. That is a deliberate trade. Alphabetical
+ordering under SQLite's binary collation sorts every accented initial after `Z`, and since these
+tools return a window rather than the whole set, it does not merely reorder the list — it pushes
+accented names out of the window entirely. Measured on a real export, names with an accented
+initial filled 1.3% of visible slots under binary ordering against 3.0% under identity order, in a
+model where they make up 3.9% of all names.
+
+Only `ea_get_scenarios` still orders names by locale, where the whole set is always returned and no
+name can be cut off. `EA_LOCALE` pins that ordering to a BCP 47 tag (`sk`, `pl`, `hu`, `de`, …) in
+an `env` block or system env; unset, the host default applies. It does not affect matching.
+
+### Paging and narrowing
+
+The enumeration tools return a window, not a sample. Each response carries `totalMatched`,
+`returned`, `offset` and `truncated`, and when rows remain, a `continuation` naming the next call —
+following it repeatedly visits every match once and terminates. Raising `limit` is not the way to
+read a large set; advancing `offset` is.
+
+When far more rows match than one window could hold, the response also carries a `breakdown` of how
+they distribute. Its keys are parameter names and its values are argument values, so a breakdown is
+a prompt to narrow — by `objectType`, `stereotype`, or `diagramType` — rather than to page through
+thousands of rows.
 
 ### Naming the path up front
 
@@ -160,12 +182,12 @@ hand; answering the prompt once is what makes that unnecessary.
 |------|-------------|
 | `ea_search` | Full-text search across elements, attributes, operations, and constraints. Case- and diacritic-insensitive across European Latin alphabets, decodes entity-encoded text. |
 | `ea_get_element` | Full element detail — attributes, operations, diagrams it appears on, constraints (pre/post/invariant/process). Flags whether attribute multiplicity is contrastive. |
-| `ea_list_elements` | List elements in a package, optionally filtered by type. Reports total count with pagination. |
+| `ea_list_elements` | List elements in a package, optionally filtered by type. Windowed: reports the total and pages with `offset`. |
 | `ea_get_connectors` | Relationships for an element — includes feature-link resolution (which attribute/operation each end attaches to). |
 | `ea_get_diagram_elements` | Elements and connectors on a diagram, including implied connectors and feature links. |
 | `ea_get_scenarios` | Use case scenario steps with all attributes (trigger, uses, result, link, state) and scenario notes. |
 | `ea_get_package_tree` | Navigate the package hierarchy with recursive depth. |
-| `ea_list_diagrams` | Search diagrams by name and package. |
+| `ea_list_diagrams` | Search diagrams by name, type and package. Windowed like the tools above. |
 | `ea_resolve` | Resolve analyst references (braced GUID or plain name) to model candidates with full package path. Falls back to name-prefix matching for analyst codes; every candidate carries a `match` of `guid`, `exact`, or `prefix`. |
 | `ea_get_schema` | Introspect the model's database schema — tables, columns, indexes, rowid alias. |
 | `ea_get_model_info` | Identity of the open export — file name, size, modification date, server version, and which configuration source the path came from. |

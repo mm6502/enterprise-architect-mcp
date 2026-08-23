@@ -106,6 +106,34 @@ describe("Response shape contract — empty results are structured, not text", (
 });
 
 /**
+ * Paging was drawn deliberately narrow: only the three enumeration tools window their
+ * results, because every other tool returns a set small enough to hand over whole.
+ * Driven off validCalls so a tool added later is covered the day it appears.
+ */
+const PAGED_TOOLS = new Set(["ea_search", "ea_list_elements", "ea_list_diagrams"]);
+
+describe("Response shape contract — the window stays with the enumeration tools", () => {
+  test.each(validCalls.filter(([tool]) => !PAGED_TOOLS.has(tool)))(
+    "%s(%j) returns no offset, breakdown or continuation",
+    async (tool, args) => {
+      const data = (await callTool(tool, args)).json();
+      expect(data.offset).toBeUndefined();
+      expect(data.breakdown).toBeUndefined();
+      expect(data.continuation).toBeUndefined();
+    },
+  );
+
+  test.each(validCalls.filter(([tool]) => PAGED_TOOLS.has(tool)))(
+    "%s(%j) echoes offset and agrees with its own truncation flag",
+    async (tool, args) => {
+      const data = (await callTool(tool, args)).json();
+      expect(typeof data.offset).toBe("number");
+      expect(data.truncated).toBe(data.offset + data.returned < data.totalMatched);
+    },
+  );
+});
+
+/**
  * The server never writes, so a client that asks for confirmation only on writes
  * must be told that. An unannotated tool is indistinguishable from a destructive one.
  */

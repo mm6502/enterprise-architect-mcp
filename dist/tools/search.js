@@ -1,7 +1,46 @@
 import { READ_ONLY } from "./annotations.js";
 import { z } from "zod";
 import { decodeEntities, foldText } from "../text.js";
+import { breakdownApplies, buildBreakdown, buildContinuation, countBy, isTruncated, limitParam, offsetParam } from "./windowing.js";
 const corpora = new WeakMap();
+/** True when the query begins somewhere other than mid-word. */
+function startsAtWordBoundary(text, query) {
+    for (let idx = text.indexOf(query); idx > 0; idx = text.indexOf(query, idx + 1)) {
+        if (!/[\p{L}\p{N}]/u.test(text[idx - 1]))
+            return true;
+    }
+    return false;
+}
+/**
+ * The ladder is injective on (sourceTable, sourceField) above rank 3, and ranks 0-3 all
+ * resolve to t_object.Name. That is what makes `matchedIn` independent of corpus scan
+ * order — collapsing any two of these ranks would put an unordered SELECT back in charge
+ * of the answer. Coverage refines name and alias hits, where a query filling more of the
+ * text is a stronger match; for notes it would only measure document length.
+ */
+function scoreMatch(entry, foldedQuery) {
+    const text = entry.foldedText;
+    const coverage = text.length > 0 ? foldedQuery.length / text.length : 0;
+    if (entry.sourceTable === "t_object") {
+        if (entry.sourceField === "Name") {
+            if (text === foldedQuery)
+                return { rank: 0, coverage: 1 };
+            if (text.startsWith(foldedQuery))
+                return { rank: 1, coverage };
+            if (startsAtWordBoundary(text, foldedQuery))
+                return { rank: 2, coverage };
+            return { rank: 3, coverage };
+        }
+        if (entry.sourceField === "Alias")
+            return { rank: 4, coverage };
+        return { rank: 5, coverage: 0 };
+    }
+    if (entry.sourceTable === "t_attribute")
+        return { rank: entry.sourceField === "Name" ? 6 : 8, coverage: 0 };
+    if (entry.sourceTable === "t_operation")
+        return { rank: entry.sourceField === "Name" ? 7 : 9, coverage: 0 };
+    return { rank: 10, coverage: 0 };
+}
 function buildCorpus(db) {
     const cached = corpora.get(db);
     if (cached)
@@ -42,15 +81,16 @@ function buildCorpus(db) {
     return entries;
 }
 export function configureSearchTools(server, model) {
-    server.tool("ea_search", "Search Enterprise Architect model elements by name, alias, notes, attribute names/notes, operation names/notes, or constraint notes. Matching is case- and diacritic-insensitive across European Latin alphabets and sees through entity-encoded text. Matching elements are returned in `results`, each with a decoded note preview and a truncation flag.", {
+    server.tool("ea_search", "Search Enterprise Architect model elements by name, alias, notes, attribute names/notes, operation names/notes, or constraint notes. Matching is case- and diacritic-insensitive across European Latin alphabets and sees through entity-encoded text. Matching elements are returned in `results`, strongest match first, each with a decoded note preview and a truncation flag; equally strong matches fall back to the model's internal identity, a stable but artificial order. Walk a large result set with `offset` rather than a larger `limit`; while rows remain, `continuation` names the next call. When far more elements match than one window can hold, `breakdown` reports how they distribute, so the next call can narrow by `objectType` or `stereotype` instead of paging.", {
         query: z.string().describe("Search term to find across all model text (names, notes, aliases, attributes, operations, constraints)"),
         objectType: z
             .string()
             .optional()
             .describe("Filter by object type (e.g., Class, UseCase, Activity, Screen, Requirement, Interface, Component)"),
         stereotype: z.string().optional().describe("Filter by stereotype"),
-        limit: z.coerce.number().default(25).describe("Maximum number of results to return (default 25)"),
-    }, READ_ONLY, async ({ query, objectType, stereotype, limit }) => {
+        limit: limitParam(25),
+        offset: offsetParam,
+    }, READ_ONLY, async ({ query, objectType, stereotype, limit, offset }) => {
         const db = await model.database();
         try {
             const entries = buildCorpus(db);
@@ -61,6 +101,7 @@ export function configureSearchTools(server, model) {
                                 results: [],
                                 totalMatched: 0,
                                 returned: 0,
+                                offset,
                                 truncated: false,
                                 _meta: { sourceTables: ["t_object", "t_attribute", "t_operation", "t_objectconstraint", "t_package"] },
                                 error: "Query is empty after normalization.",
@@ -72,23 +113,11 @@ export function configureSearchTools(server, model) {
             for (const entry of entries) {
                 if (!entry.foldedText.includes(foldedQuery))
                     continue;
+                const { rank, coverage } = scoreMatch(entry, foldedQuery);
                 const existing = matchMap.get(entry.objectId);
-                let rank;
-                if (entry.sourceTable === "t_object" && entry.sourceField === "Name") {
-                    rank = entry.foldedText === foldedQuery ? 0 : 1; // exact name vs substring
-                }
-                else if (entry.sourceTable === "t_object" && entry.sourceField === "Alias") {
-                    rank = 2;
-                }
-                else if (entry.sourceTable === "t_object" && entry.sourceField === "Note") {
-                    rank = 3;
-                }
-                else {
-                    rank = 4; // attribute, operation, constraint matches
-                }
-                if (!existing || rank < existing.rank) {
-                    matchMap.set(entry.objectId, { rank, matchedIn: `${entry.sourceTable}.${entry.sourceField}` });
-                }
+                if (existing && (existing.rank < rank || (existing.rank === rank && existing.coverage >= coverage)))
+                    continue;
+                matchMap.set(entry.objectId, { rank, coverage, matchedIn: `${entry.sourceTable}.${entry.sourceField}` });
             }
             if (matchMap.size === 0) {
                 return {
@@ -98,15 +127,17 @@ export function configureSearchTools(server, model) {
                                 results: [],
                                 totalMatched: 0,
                                 returned: 0,
+                                offset,
                                 truncated: false,
                                 _meta: { sourceTables: ["t_object", "t_attribute", "t_operation", "t_objectconstraint", "t_package"] },
                             }, null, 2),
                         }],
                 };
             }
-            // Sort by rank, then fetch element details from DB for top matches
+            // Strongest first, then identity: without the final tiebreak, paging a large
+            // tie could show the same row twice and never show another.
             const sortedIds = [...matchMap.entries()]
-                .sort((a, b) => a[1].rank - b[1].rank)
+                .sort((a, b) => a[1].rank - b[1].rank || b[1].coverage - a[1].coverage || a[0] - b[0])
                 .map(([id]) => id);
             // Build SQL to fetch matched elements with filters
             let filterClauses = "";
@@ -135,8 +166,9 @@ export function configureSearchTools(server, model) {
             const sorted = sortedIds
                 .filter((id) => rowMap.has(id))
                 .map((id) => rowMap.get(id));
-            const truncated = sorted.length > limit;
-            const results = sorted.slice(0, limit).map((r) => {
+            const window = sorted.slice(offset, offset + limit);
+            const truncated = isTruncated(offset, window.length, totalMatched);
+            const results = window.map((r) => {
                 const decodedNote = decodeEntities(r.Note);
                 const notePreview = decodedNote ? decodedNote.slice(0, 200) : null;
                 const notePreviewTruncated = decodedNote != null && decodedNote.length > 200;
@@ -153,19 +185,23 @@ export function configureSearchTools(server, model) {
                     matchedIn: matchMap.get(r.Object_ID)?.matchedIn ?? null,
                 };
             });
+            const breakdown = breakdownApplies(totalMatched, limit)
+                ? buildBreakdown({
+                    objectType: objectType ? undefined : countBy(sorted, (r) => r.Object_Type),
+                    stereotype: stereotype ? undefined : countBy(sorted, (r) => r.Stereotype),
+                })
+                : undefined;
+            const continuation = buildContinuation("ea_search", { query, objectType, stereotype, limit }, offset, results.length, totalMatched);
             const response = {
                 results,
                 totalMatched,
                 returned: results.length,
+                offset,
                 truncated,
+                ...(breakdown ? { breakdown } : {}),
+                ...(continuation ? { continuation } : {}),
                 _meta: { sourceTables: ["t_object", "t_attribute", "t_operation", "t_objectconstraint", "t_package"] },
             };
-            if (truncated) {
-                response.continuation = {
-                    tool: "ea_search",
-                    arguments: { query, objectType, stereotype, limit: Math.max(limit * 2, totalMatched) },
-                };
-            }
             return {
                 content: [{ type: "text", text: JSON.stringify(response, null, 2) }],
             };

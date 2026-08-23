@@ -31,6 +31,8 @@ const CONTRACT_FIELDS = new Set([
   "totalMatched",
   "returned",
   "truncated",
+  "offset",
+  "breakdown",
   "_meta",
   "sourceTables",
 ]);
@@ -46,13 +48,17 @@ const isServerDefined = (field: string) => /^[a-z]/.test(field);
 /** Calls returning a success payload; a tool whose shape branches on its arguments gets one per branch. */
 const SAMPLE_CALLS: [string, Record<string, unknown>][] = [
   ["ea_search", { query: "zmlúv" }],
+  // A window that truncates, so the continuation and breakdown branches are inspected too.
+  ["ea_search", { query: "a", limit: 1 }],
   ["ea_get_element", { elementId: 1 }],
   ["ea_list_elements", { packageId: 3 }],
+  ["ea_list_elements", { packageId: 3, limit: 1 }],
   ["ea_get_connectors", { elementId: 1 }],
   ["ea_get_diagram_elements", { diagramId: 1 }],
   ["ea_get_scenarios", { elementId: 1 }],
   ["ea_get_package_tree", {}],
   ["ea_list_diagrams", {}],
+  ["ea_list_diagrams", { limit: 1 }],
   ["ea_resolve", { reference: "{OBJ-0001}" }],
   ["ea_get_schema", {}],
   ["ea_get_schema", { tableName: "t_object" }],
