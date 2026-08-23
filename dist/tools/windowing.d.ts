@@ -27,10 +27,6 @@ export interface BreakdownAxis {
     returned: number;
     truncated: boolean;
 }
-/**
- * Counts in, one breakdown axis out. Axis extraction stays with the tool, because
- * only the tool knows which of its parameters a column corresponds to.
- */
 export declare function buildAxis(counts: Map<string, number>): BreakdownAxis | undefined;
 /** Tallies a filterable column, skipping blanks: a blank is not an argument a caller can pass back. */
 export declare function countBy<T>(rows: T[], pick: (row: T) => unknown): Map<string, number>;

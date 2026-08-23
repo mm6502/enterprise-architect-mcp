@@ -126,6 +126,22 @@ describe("buildAxis", () => {
     expect(axis).toMatchObject({ totalMatched: 30, truncated: true });
     expect(axis.values[0]).toEqual({ value: "Type00", count: 100 });
   });
+
+  it("does not exile an accented value from a capped list", () => {
+    const counts = new Map<string, number>([["Álava", 1]]);
+    for (let i = 1; i <= 20; i++) counts.set(`Beta ${String(i).padStart(2, "0")}`, 1);
+
+    const axis = buildAxis(counts)!;
+    expect(axis.truncated).toBe(true);
+    // Binary order would put Á past every ASCII letter, so the cap would drop it.
+    expect(axis.values[0].value).toBe("Álava");
+    expect(axis.values.map((v) => v.value)).not.toContain("Beta 20");
+  });
+
+  it("keeps values that fold alike in a stable, deterministic order", () => {
+    const axis = buildAxis(new Map([["Ábel", 1], ["Abel", 1], ["abel", 1]]))!;
+    expect(axis.values.map((v) => v.value)).toEqual(["Abel", "abel", "Ábel"]);
+  });
 });
 
 describe("countBy", () => {

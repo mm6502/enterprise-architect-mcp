@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { foldText } from "../text.js";
 /**
  * A result set worth more than this many windows cannot be usefully paged through,
  * so the response describes its shape instead of only sampling it.
@@ -36,12 +37,25 @@ export function breakdownApplies(totalMatched, limit) {
  * Counts in, one breakdown axis out. Axis extraction stays with the tool, because
  * only the tool knows which of its parameters a column corresponds to.
  */
+/**
+ * The cap below makes the value list a truncated window, and under binary order every
+ * accented value sorts past every plain one — so a tie at the cap would drop the
+ * accented value every time. Folding first is locale-independent, unlike compareNames,
+ * which matters because these values come back as filter arguments.
+ */
+function compareValues(a, b) {
+    const foldedA = foldText(a);
+    const foldedB = foldText(b);
+    if (foldedA !== foldedB)
+        return foldedA < foldedB ? -1 : 1;
+    return a < b ? -1 : a > b ? 1 : 0;
+}
 export function buildAxis(counts) {
     // One value only restates a filter the caller could already have applied.
     if (counts.size < 2)
         return undefined;
     const sorted = [...counts.entries()]
-        .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+        .sort((a, b) => b[1] - a[1] || compareValues(a[0], b[0]))
         .map(([value, count]) => ({ value, count }));
     const values = sorted.slice(0, MAX_BREAKDOWN_VALUES);
     return {
