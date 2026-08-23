@@ -121,6 +121,14 @@ If the path points to a **directory**, the server automatically picks the newest
 modification time. Pointing at your export folder means new exports are picked up without
 reconfiguring anything.
 
+### Name ordering
+
+Matching is locale-independent — search folds case and diacritics across European Latin alphabets,
+so `Straße`, `Łódź` and `Győr` are found however they are typed or entity-encoded. Only the *order*
+names appear in is locale-dependent, and the export does not record which language it is written in.
+Set `EA_LOCALE` to a BCP 47 tag (`sk`, `pl`, `hu`, `de`, …) in an `env` block or system env to pin
+it; unset, the host default applies.
+
 ### Naming the path up front
 
 If you would rather never see the prompt — a CI job, a shared image, or simply a preference — put
@@ -150,7 +158,7 @@ hand; answering the prompt once is what makes that unnecessary.
 
 | Tool | Description |
 |------|-------------|
-| `ea_search` | Full-text search across elements, attributes, operations, and constraints. Case-insensitive across the Slovak alphabet, decodes entity-encoded text. |
+| `ea_search` | Full-text search across elements, attributes, operations, and constraints. Case- and diacritic-insensitive across European Latin alphabets, decodes entity-encoded text. |
 | `ea_get_element` | Full element detail — attributes, operations, diagrams it appears on, constraints (pre/post/invariant/process). Flags whether attribute multiplicity is contrastive. |
 | `ea_list_elements` | List elements in a package, optionally filtered by type. Reports total count with pagination. |
 | `ea_get_connectors` | Relationships for an element — includes feature-link resolution (which attribute/operation each end attaches to). |

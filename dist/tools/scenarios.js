@@ -1,7 +1,7 @@
 import { READ_ONLY } from "./annotations.js";
 import { z } from "zod";
 import { XMLParser } from "fast-xml-parser";
-import { decodeEntities } from "../text.js";
+import { decodeEntities, compareNames } from "../text.js";
 const xmlParser = new XMLParser({
     ignoreAttributes: false,
     attributeNamePrefix: "@_",
@@ -73,7 +73,7 @@ export function configureScenarioTools(server, model) {
                 const bOrder = SCENARIO_TYPE_ORDER[b.ScenarioType] ?? 99;
                 if (aOrder !== bOrder)
                     return aOrder - bOrder;
-                return (a.Scenario || "").localeCompare(b.Scenario || "", "sk");
+                return compareNames(a.Scenario, b.Scenario);
             });
             const scenarios = rows.map((row) => {
                 const rawSteps = parseScenarioXml(row.XMLContent);

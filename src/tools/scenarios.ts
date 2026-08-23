@@ -4,7 +4,7 @@ import type { ModelAccess } from "../model-session.js";
 import { READ_ONLY } from "./annotations.js";
 import { z } from "zod";
 import { XMLParser } from "fast-xml-parser";
-import { decodeEntities } from "../text.js";
+import { decodeEntities, compareNames } from "../text.js";
 
 interface ScenarioStep {
   stepNumber: number;
@@ -106,7 +106,7 @@ export function configureScenarioTools(server: McpServer, model: ModelAccess): v
           const aOrder = SCENARIO_TYPE_ORDER[a.ScenarioType] ?? 99;
           const bOrder = SCENARIO_TYPE_ORDER[b.ScenarioType] ?? 99;
           if (aOrder !== bOrder) return aOrder - bOrder;
-          return (a.Scenario || "").localeCompare(b.Scenario || "", "sk");
+          return compareNames(a.Scenario, b.Scenario);
         });
 
         const scenarios: ParsedScenario[] = rows.map((row) => {

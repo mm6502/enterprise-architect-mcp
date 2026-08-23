@@ -174,7 +174,7 @@ export function configureDiagramTools(server: McpServer, model: ModelAccess): vo
     "List diagrams in the model, optionally filtered by package and/or name substring. Each entry in `results` carries `diagramId`, `name`, `type`, `packagePath`, and `eaGuid`.",
     {
       packageId: z.coerce.number().optional().describe("Filter to diagrams in this package"),
-      nameContains: z.string().optional().describe("Filter to diagrams whose name contains this substring (case-insensitive across Slovak alphabet)"),
+      nameContains: z.string().optional().describe("Filter to diagrams whose name contains this substring (case- and diacritic-insensitive across European Latin alphabets)"),
       limit: z.coerce.number().default(50).describe("Maximum number of results (default 50)"),
     },
     READ_ONLY,

@@ -225,10 +225,11 @@ feature — `node:sqlite` exposes no collation registration, and ICU is not comp
 build. Binary collation puts every accented initial after `Z`, affecting ~2,570 element names and
 ~400 package names (3.9% and 3.8%).
 
-**Decided:** order after retrieval with `Intl.Collator('sk')`, measured at 0.71–1.53 ms per 500
-names. The effect is narrower than it sounds and that is the danger: in every affected tool `Name`
-is a *secondary* key, so the misordering happens inside each group and reads as a plausible list
-rather than a broken one.
+**Decided:** order after retrieval with `Intl.Collator`, measured at 0.71–1.53 ms per 500 names.
+The locale is not hardcoded: `EA_LOCALE` sets it and the host locale is the default, because the
+export does not record which language it is written in. The effect is narrower than it sounds and
+that is the danger: in every affected tool `Name` is a *secondary* key, so the misordering happens
+inside each group and reads as a plausible list rather than a broken one.
 
 ### Tagged values are not worth a typed tool
 

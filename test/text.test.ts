@@ -13,6 +13,46 @@ describe("decodeEntities", () => {
     expect(decodeEntities("&aacute;")).toBe("á");
   });
 
+  it("decodes German sharp s", () => {
+    expect(decodeEntities("Stra&szlig;e")).toBe("Straße");
+  });
+
+  it("decodes Polish stroked l and acute forms", () => {
+    expect(decodeEntities("&Lstrok;&oacute;d&zacute;")).toBe("Łódź");
+  });
+
+  it("decodes Polish ogonek", () => {
+    expect(decodeEntities("Gda&nacute;sk &eogon;")).toBe("Gdańsk ę");
+  });
+
+  it("decodes Nordic slashed o and ring", () => {
+    expect(decodeEntities("N&oslash;rrebro &Aring;")).toBe("Nørrebro Å");
+  });
+
+  it("decodes Hungarian double acute", () => {
+    expect(decodeEntities("Gy&odblac;r &Udblac;")).toBe("Győr Ű");
+  });
+
+  it("decodes Spanish tilde and French cedilla", () => {
+    expect(decodeEntities("Espa&ntilde;ol Fran&ccedil;ais")).toBe("Español Français");
+  });
+
+  it("decodes ligatures", () => {
+    expect(decodeEntities("&AElig;ther c&oelig;ur")).toBe("Æther cœur");
+  });
+
+  it("decodes punctuation used in analyst prose", () => {
+    expect(decodeEntities("a &ndash; b &hellip; &bdquo;c&ldquo;")).toBe("a – b … „c“");
+  });
+
+  it("decodes named entities containing digits", () => {
+    expect(decodeEntities("&frac12; &sup2; &frac34;")).toBe("½ ² ¾");
+  });
+
+  it("leaves an unknown named entity unchanged", () => {
+    expect(decodeEntities("&nosuchentity;")).toBe("&nosuchentity;");
+  });
+
   it("preserves &lt;", () => {
     expect(decodeEntities("&lt;")).toBe("&lt;");
   });
@@ -49,7 +89,7 @@ describe("decodeEntities", () => {
 });
 
 describe("foldText", () => {
-  it("folds uppercase Slovak diacritics", () => {
+  it("folds uppercase diacritics", () => {
     expect(foldText("PRÁVNICKÁ")).toBe("pravnicka");
   });
 
@@ -67,6 +107,67 @@ describe("foldText", () => {
 
   it("combined decode + fold", () => {
     expect(foldText(decodeEntities("Pr&#225;vnick&#225;")!)).toBe("pravnicka");
+  });
+
+  it("decodes then folds an entity-encoded Polish name", () => {
+    expect(foldText(decodeEntities("&Lstrok;&oacute;d&zacute;")!)).toBe("lodz");
+  });
+
+  // Letters below carry no canonical decomposition, so a mark-stripping fold alone misses them.
+  it("folds Polish ł and combining accents together", () => {
+    expect(foldText("Łódź")).toBe("lodz");
+  });
+
+  it("folds Polish ogonek and acute forms", () => {
+    expect(foldText("Gdańsk Zażółć Ę")).toBe("gdansk zazolc e");
+  });
+
+  it("expands German ß to ss", () => {
+    expect(foldText("Straße")).toBe("strasse");
+  });
+
+  it("expands capital ẞ to ss", () => {
+    expect(foldText("STRAẞE")).toBe("strasse");
+  });
+
+  it("folds Danish ø and Nordic å", () => {
+    expect(foldText("Nørrebro Ångström")).toBe("norrebro angstrom");
+  });
+
+  it("expands æ and œ ligatures", () => {
+    expect(foldText("Æther cœur")).toBe("aether coeur");
+  });
+
+  it("folds Croatian đ", () => {
+    expect(foldText("Đakovo")).toBe("dakovo");
+  });
+
+  it("folds Icelandic þ and ð", () => {
+    expect(foldText("Þórð")).toBe("thord");
+  });
+
+  it("folds Hungarian double acute", () => {
+    expect(foldText("Győr Ő")).toBe("gyor o");
+  });
+
+  it("folds French cedilla and grave", () => {
+    expect(foldText("Français où")).toBe("francais ou");
+  });
+
+  it("folds Spanish ñ", () => {
+    expect(foldText("Español")).toBe("espanol");
+  });
+
+  it("folds Turkish dotted capital İ", () => {
+    expect(foldText("İstanbul")).toBe("istanbul");
+  });
+
+  it("folds Romanian comma-below forms", () => {
+    expect(foldText("București")).toBe("bucuresti");
+  });
+
+  it("leaves unaccented ASCII untouched", () => {
+    expect(foldText("Contract 42")).toBe("contract 42");
   });
 });
 

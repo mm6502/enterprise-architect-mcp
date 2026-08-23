@@ -42,7 +42,7 @@ function buildCorpus(db) {
     return entries;
 }
 export function configureSearchTools(server, model) {
-    server.tool("ea_search", "Search Enterprise Architect model elements by name, alias, notes, attribute names/notes, operation names/notes, or constraint notes. Matches across the full Slovak alphabet including encoded entities. Matching elements are returned in `results`, each with a decoded note preview and a truncation flag.", {
+    server.tool("ea_search", "Search Enterprise Architect model elements by name, alias, notes, attribute names/notes, operation names/notes, or constraint notes. Matching is case- and diacritic-insensitive across European Latin alphabets and sees through entity-encoded text. Matching elements are returned in `results`, each with a decoded note preview and a truncation flag.", {
         query: z.string().describe("Search term to find across all model text (names, notes, aliases, attributes, operations, constraints)"),
         objectType: z
             .string()
@@ -129,7 +129,7 @@ export function configureSearchTools(server, model) {
           WHERE o.Object_ID IN (${placeholders})${filterClauses}
         `;
             const allRows = db.prepare(sql).all(...sortedIds, ...filterParams);
-            // Re-sort by corpus rank and apply Slovak collation within same rank
+            // IN (...) returns rows in whatever order the plan produces, so rank order is restored here.
             const rowMap = new Map(allRows.map((r) => [r.Object_ID, r]));
             const totalMatched = sortedIds.filter((id) => rowMap.has(id)).length;
             const sorted = sortedIds

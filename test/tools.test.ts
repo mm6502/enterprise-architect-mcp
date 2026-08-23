@@ -112,7 +112,7 @@ describe("ea_search", () => {
     expect(data.results.some((e: any) => e.Name === "PRÁVNICKÁ OSOBA")).toBe(true);
   });
 
-  it("matches case-insensitively across Slovak alphabet (R3)", async () => {
+  it("matches case-insensitively across accented Latin text (R3)", async () => {
     const res = await callTool("ea_search", { query: "PRÁVNICKÁ" });
     const data = res.json();
     expect(data.results.some((e: any) => e.Name === "PRÁVNICKÁ OSOBA")).toBe(true);
