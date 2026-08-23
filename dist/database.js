@@ -1,0 +1,25 @@
+import { DatabaseSync } from "node:sqlite";
+import { existsSync } from "node:fs";
+export function openDatabase(path) {
+    if (!existsSync(path)) {
+        throw new Error(`QEA file not found: "${path}"`);
+    }
+    let db;
+    try {
+        db = new DatabaseSync(path, { readOnly: true });
+    }
+    catch (err) {
+        throw new Error(`Failed to open database: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    // Sanity check: verify it's an EA export
+    try {
+        db.prepare("SELECT COUNT(*) FROM t_object").get();
+    }
+    catch {
+        db.close();
+        throw new Error(`File is not a valid Enterprise Architect export (missing t_object table): "${path}"`);
+    }
+    // Performance: increase cache
+    db.exec("PRAGMA cache_size = -64000"); // 64MB cache
+    return db;
+}

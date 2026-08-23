@@ -1,0 +1,322 @@
+[
+  {
+    "id": "search-01-exact-name",
+    "tool": "ea_search",
+    "description": "An exact name outranks an element whose name merely contains the term",
+    "args": { "query": "Zmluva" },
+    "assertions": [
+      { "type": "equals", "path": "totalMatched", "expected": 2 },
+      { "type": "equals", "path": "results[0].Object_ID", "expected": 120 },
+      { "type": "equals", "path": "results[0].matchedIn", "expected": "t_object.Name" },
+      { "type": "equals", "path": "results[1].Object_ID", "expected": 141 }
+    ]
+  },
+  {
+    "id": "search-02-entity-encoded-note",
+    "tool": "ea_search",
+    "description": "A term stored only entity-encoded is still found",
+    "args": { "query": "záväzok" },
+    "assertions": [
+      { "type": "equals", "path": "totalMatched", "expected": 1 },
+      { "type": "equals", "path": "results[0].Object_ID", "expected": 123 },
+      { "type": "equals", "path": "results[0].matchedIn", "expected": "t_object.Note" }
+    ]
+  },
+  {
+    "id": "search-03-diacritics-folded",
+    "tool": "ea_search",
+    "description": "The same term without diacritics reaches the same element",
+    "args": { "query": "zavazok" },
+    "assertions": [
+      { "type": "equals", "path": "totalMatched", "expected": 1 },
+      { "type": "equals", "path": "results[0].Object_ID", "expected": 123 }
+    ]
+  },
+  {
+    "id": "search-04-note-preview-truncated",
+    "tool": "ea_search",
+    "description": "A long note is previewed and flagged as cut short",
+    "args": { "query": "dodatky" },
+    "assertions": [
+      { "type": "equals", "path": "totalMatched", "expected": 1 },
+      { "type": "equals", "path": "results[0].Object_ID", "expected": 130 },
+      { "type": "equals", "path": "results[0].notePreviewTruncated", "expected": true }
+    ]
+  },
+  {
+    "id": "search-05-type-filter",
+    "tool": "ea_search",
+    "description": "The type filter keeps only classes, and name matches rank above a note mention",
+    "args": { "query": "Dodávateľ", "objectType": "Class" },
+    "assertions": [
+      { "type": "equals", "path": "totalMatched", "expected": 3 },
+      { "type": "equals", "path": "results[0].Object_ID", "expected": 121 },
+      { "type": "equals", "path": "results[1].Object_ID", "expected": 122 },
+      { "type": "equals", "path": "results[2].Object_ID", "expected": 120 },
+      { "type": "equals", "path": "results[2].matchedIn", "expected": "t_object.Note" }
+    ]
+  },
+  {
+    "id": "resolve-01-exact-beats-prefix",
+    "tool": "ea_resolve",
+    "description": "An exact name is returned alone, never diluted by the element that only starts with it",
+    "args": { "reference": "UC_OBS_4101" },
+    "assertions": [
+      { "type": "equals", "path": "totalMatched", "expected": 1 },
+      { "type": "equals", "path": "candidates[0].id", "expected": 103 },
+      { "type": "equals", "path": "candidates[0].match", "expected": "exact" },
+      { "type": "equals", "path": "candidates[0].fullPackagePath", "expected": "Model.Aplikačná architektúra.Prípady použitia" }
+    ]
+  },
+  {
+    "id": "resolve-02-prefix-fallback",
+    "tool": "ea_resolve",
+    "description": "An analyst code with no exact match resolves by prefix and says so",
+    "args": { "reference": "POZ_OBS_6301" },
+    "assertions": [
+      { "type": "equals", "path": "totalMatched", "expected": 1 },
+      { "type": "equals", "path": "candidates[0].id", "expected": 130 },
+      { "type": "equals", "path": "candidates[0].match", "expected": "prefix" }
+    ]
+  },
+  {
+    "id": "resolve-03-guid",
+    "tool": "ea_resolve",
+    "description": "A braced GUID resolves to exactly one element",
+    "args": { "reference": "{EVAL-OBJ-0122}" },
+    "assertions": [
+      { "type": "equals", "path": "totalMatched", "expected": 1 },
+      { "type": "equals", "path": "candidates[0].id", "expected": 122 },
+      { "type": "equals", "path": "candidates[0].match", "expected": "guid" },
+      { "type": "equals", "path": "candidates[0].fullPackagePath", "expected": "Model.Aplikačná architektúra" }
+    ]
+  },
+  {
+    "id": "resolve-04-ambiguous-name",
+    "tool": "ea_resolve",
+    "description": "A name used in two packages returns both, distinguishable only by path",
+    "args": { "reference": "Dodávateľ", "kind": "element" },
+    "assertions": [
+      { "type": "equals", "path": "totalMatched", "expected": 2 },
+      { "type": "equals", "path": "candidates[0].fullPackagePath", "expected": "Model.Obchodná analýza.Doménový model" },
+      { "type": "equals", "path": "candidates[1].fullPackagePath", "expected": "Model.Aplikačná architektúra" }
+    ]
+  },
+  {
+    "id": "element-01-multiplicity-contrast",
+    "tool": "ea_get_element",
+    "description": "An element with mixed multiplicity reports the contrast as present",
+    "args": { "elementId": 120 },
+    "assertions": [
+      { "type": "equals", "path": "attributesTotal", "expected": 4 },
+      { "type": "equals", "path": "attributesTruncated", "expected": false },
+      { "type": "equals", "path": "_meta.attributes.multiplicityIsUniform", "expected": false },
+      { "type": "equals", "path": "attributes[2].multiplicity", "expected": "0..1" }
+    ]
+  },
+  {
+    "id": "element-02-multiplicity-uniform",
+    "tool": "ea_get_element",
+    "description": "An element whose attributes are all 1..1 reports no contrast to infer from",
+    "args": { "elementId": 121 },
+    "assertions": [
+      { "type": "equals", "path": "attributesTotal", "expected": 3 },
+      { "type": "equals", "path": "_meta.attributes.multiplicityIsUniform", "expected": true }
+    ]
+  },
+  {
+    "id": "element-03-attribute-truncation",
+    "tool": "ea_get_element",
+    "description": "The inline attribute list is capped, and the true count is still reported",
+    "args": { "elementId": 150 },
+    "assertions": [
+      { "type": "equals", "path": "attributesTotal", "expected": 60 },
+      { "type": "equals", "path": "attributesTruncated", "expected": true },
+      { "type": "equals", "path": "_meta.attributes.returned", "expected": 50 }
+    ]
+  },
+  {
+    "id": "element-04-decoded-note-and-constraint",
+    "tool": "ea_get_element",
+    "description": "An encoded note and an encoded constraint both come back readable",
+    "args": { "elementId": 123 },
+    "assertions": [
+      { "type": "contains", "path": "Note", "expected": "záväzok" },
+      { "type": "equals", "path": "constraints[0].name", "expected": "Platné IČO" },
+      { "type": "contains", "path": "constraints[0].notes", "expected": "platné IČO" },
+      { "type": "equals", "path": "diagrams[0].diagramId", "expected": 602 }
+    ]
+  },
+  {
+    "id": "element-05-constraints-and-diagrams",
+    "tool": "ea_get_element",
+    "description": "The rule a scenario step cites is retrievable from the element's constraints",
+    "args": { "elementId": 101 },
+    "assertions": [
+      { "type": "equals", "path": "_meta.constraints.totalMatched", "expected": 3 },
+      { "type": "equals", "path": "constraints[2].name", "expected": "PRAV_OBS_8501" },
+      { "type": "equals", "path": "constraints[2].type", "expected": "Process" },
+      { "type": "equals", "path": "diagrams[0].packagePath", "expected": "Model.Obchodná analýza.Prípady použitia" }
+    ]
+  },
+  {
+    "id": "element-06-operations-with-params",
+    "tool": "ea_get_element",
+    "description": "Operations carry their parameters inline",
+    "args": { "elementId": 141 },
+    "assertions": [
+      { "type": "equals", "path": "operationsTotal", "expected": 2 },
+      { "type": "equals", "path": "operations[0].name", "expected": "zalozZmluvu" },
+      { "type": "equals", "path": "operations[0].parameters[1].name", "expected": "cisloZmluvy" }
+    ]
+  },
+  {
+    "id": "list-elements-01-package",
+    "tool": "ea_list_elements",
+    "description": "A package lists its own elements, ordered by type then name",
+    "args": { "packageId": 3 },
+    "assertions": [
+      { "type": "equals", "path": "totalMatched", "expected": 3 },
+      { "type": "equals", "path": "truncated", "expected": false },
+      { "type": "equals", "path": "elements[0].Object_ID", "expected": 130 },
+      { "type": "equals", "path": "elements[1].Object_ID", "expected": 101 }
+    ]
+  },
+  {
+    "id": "connectors-01-attribute-feature-links",
+    "tool": "ea_get_connectors",
+    "description": "Screen-field to entity-attribute mapping is readable only through feature links",
+    "args": { "elementId": 110, "direction": "outgoing" },
+    "assertions": [
+      { "type": "equals", "path": "totalMatched", "expected": 3 },
+      { "type": "equals", "path": "connectors[0].sourceFeature.name", "expected": "poleCisloZmluvy" },
+      { "type": "equals", "path": "connectors[0].targetFeature.name", "expected": "cisloZmluvy" },
+      { "type": "equals", "path": "connectors[0].targetFeature.type", "expected": "attribute" },
+      { "type": "equals", "path": "connectors[0].targetFeature.owningElementName", "expected": "Zmluva" }
+    ]
+  },
+  {
+    "id": "connectors-02-operation-feature-link",
+    "tool": "ea_get_connectors",
+    "description": "A feature link can point at an operation, not only an attribute",
+    "args": { "elementId": 141, "direction": "outgoing" },
+    "assertions": [
+      { "type": "equals", "path": "totalMatched", "expected": 1 },
+      { "type": "equals", "path": "connectors[0].sourceFeature.name", "expected": "zalozZmluvu" },
+      { "type": "equals", "path": "connectors[0].sourceFeature.type", "expected": "operation" },
+      { "type": "equals", "path": "connectors[0].targetFeature", "expected": null }
+    ]
+  },
+  {
+    "id": "connectors-03-roles-and-direction",
+    "tool": "ea_get_connectors",
+    "description": "Direction is reported relative to the element asked about",
+    "args": { "elementId": 120, "connectorType": "Association" },
+    "assertions": [
+      { "type": "equals", "path": "totalMatched", "expected": 2 },
+      { "type": "equals", "path": "connectors[0].id", "expected": 506 },
+      { "type": "equals", "path": "connectors[0].direction", "expected": "outgoing" },
+      { "type": "equals", "path": "connectors[0].destRole", "expected": "Dodávateľ" },
+      { "type": "equals", "path": "connectors[1].id", "expected": 504 },
+      { "type": "equals", "path": "connectors[1].direction", "expected": "incoming" }
+    ]
+  },
+  {
+    "id": "package-tree-01-depth",
+    "tool": "ea_get_package_tree",
+    "description": "The tree nests to the requested depth and counts elements per package",
+    "args": { "packageId": 1, "depth": 2 },
+    "assertions": [
+      { "type": "equals", "path": "totalMatched", "expected": 6 },
+      { "type": "equals", "path": "packages[0].id", "expected": 2 },
+      { "type": "equals", "path": "packages[0].name", "expected": "Obchodná analýza" },
+      { "type": "equals", "path": "packages[0].children[0].id", "expected": 3 },
+      { "type": "equals", "path": "packages[0].children[0].elementCount", "expected": 3 }
+    ]
+  },
+  {
+    "id": "diagram-01-implied-connector",
+    "tool": "ea_get_diagram_elements",
+    "description": "A connector with both ends on the diagram is included without a link row",
+    "args": { "diagramId": 602 },
+    "assertions": [
+      { "type": "equals", "path": "diagram.packageName", "expected": "Doménový model" },
+      { "type": "equals", "path": "_meta.elements.totalMatched", "expected": 3 },
+      { "type": "equals", "path": "_meta.connectors.totalMatched", "expected": 1 },
+      { "type": "equals", "path": "connectors[0].id", "expected": 506 },
+      { "type": "equals", "path": "connectors[0].hidden", "expected": false }
+    ]
+  },
+  {
+    "id": "diagram-02-explicit-link-off-diagram-end",
+    "tool": "ea_get_diagram_elements",
+    "description": "An explicit link counts even when one end is not placed on the diagram",
+    "args": { "diagramId": 601 },
+    "assertions": [
+      { "type": "equals", "path": "_meta.elements.totalMatched", "expected": 3 },
+      { "type": "equals", "path": "_meta.connectors.totalMatched", "expected": 1 },
+      { "type": "equals", "path": "connectors[0].id", "expected": 504 },
+      { "type": "equals", "path": "connectors[0].dest.id", "expected": 120 }
+    ]
+  },
+  {
+    "id": "list-diagrams-01-duplicate-name",
+    "tool": "ea_list_diagrams",
+    "description": "Two diagrams share a name and are told apart only by package path",
+    "args": { "nameContains": "DG_OBS_7401" },
+    "assertions": [
+      { "type": "equals", "path": "totalMatched", "expected": 2 },
+      { "type": "equals", "path": "results[0].diagramId", "expected": 601 },
+      { "type": "equals", "path": "results[0].packagePath", "expected": "Model.Obchodná analýza.Prípady použitia" },
+      { "type": "equals", "path": "results[1].packagePath", "expected": "Model.Aplikačná architektúra.Prípady použitia" }
+    ]
+  },
+  {
+    "id": "scenarios-01-steps-and-order",
+    "tool": "ea_get_scenarios",
+    "description": "Basic Path comes first and its steps carry the attributes an answer depends on",
+    "args": { "elementId": 101 },
+    "assertions": [
+      { "type": "equals", "path": "totalMatched", "expected": 2 },
+      { "type": "equals", "path": "scenarios[0].type", "expected": "Basic Path" },
+      { "type": "equals", "path": "scenarios[0].steps[1].uses", "expected": "PRAV_OBS_8501" },
+      { "type": "equals", "path": "scenarios[0].steps[0].link", "expected": "{EVAL-OBJ-0110}" },
+      { "type": "equals", "path": "scenarios[0].steps[2].stepNumber", "expected": 3 },
+      { "type": "equals", "path": "scenarios[1].type", "expected": "Alternate" }
+    ]
+  },
+  {
+    "id": "schema-01-tables",
+    "tool": "ea_get_schema",
+    "description": "Every table the server may read is listed with its row count",
+    "args": {},
+    "assertions": [
+      { "type": "equals", "path": "totalMatched", "expected": 11 },
+      { "type": "equals", "path": "truncated", "expected": false }
+    ]
+  },
+  {
+    "id": "schema-02-table-detail",
+    "tool": "ea_get_schema",
+    "description": "A named table reports its rowid alias and its unique index",
+    "args": { "tableName": "t_attribute" },
+    "assertions": [
+      { "type": "equals", "path": "table", "expected": "t_attribute" },
+      { "type": "equals", "path": "rowidAlias", "expected": "ID" },
+      { "type": "equals", "path": "_meta.columns.totalMatched", "expected": 12 },
+      { "type": "equals", "path": "indexes[0].name", "expected": "uq_attribute_eaguid" },
+      { "type": "equals", "path": "indexes[0].unique", "expected": true }
+    ]
+  },
+  {
+    "id": "model-info-01-identity-and-provenance",
+    "tool": "ea_get_model_info",
+    "description": "The open export names itself and says which source supplied its path",
+    "args": {},
+    "assertions": [
+      { "type": "equals", "path": "fileName", "expected": "eval-model.qea" },
+      { "type": "equals", "path": "configuration.sourceId", "expected": "argument" },
+      { "type": "exists", "path": "resolvedPathNote" }
+    ]
+  }
+]

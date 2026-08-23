@@ -1,0 +1,2 @@
+# tsc writes dist with LF, so core.autocrlf=true would flag every build as modified.
+dist/** text eol=lf

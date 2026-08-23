@@ -1,0 +1,196 @@
+# Enterprise Architect MCP Server
+
+[![npm version](https://img.shields.io/npm/v/enterprise-architect-mcp.svg)](https://www.npmjs.com/package/enterprise-architect-mcp)
+[![Node.js](https://img.shields.io/node/v/enterprise-architect-mcp.svg)](https://nodejs.org)
+[![License: EUPL-1.2](https://img.shields.io/badge/license-EUPL--1.2-blue.svg)](LICENSE)
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_server-0098FF?logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522enterprise-architect%2522%252C%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522-y%2522%252C%2522enterprise-architect-mcp%2522%255D%257D)
+[![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_server-24bfa5?logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect?url=vscode-insiders%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522enterprise-architect%2522%252C%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522-y%2522%252C%2522enterprise-architect-mcp%2522%255D%257D)
+
+A read-only [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for Sparx Enterprise Architect `.qea` exports. Gives AI agents access to EA analysis models — search elements, navigate packages, read use case scenarios, and traverse connectors — without a running EA instance.
+
+Works with any MCP client (VS Code / GitHub Copilot, Claude Desktop, Cursor, Windsurf). Reads the `.qea` SQLite export directly, never writes to it, and every response carries completeness metadata so an agent can tell a truncated answer from a complete one.
+
+**Keywords:** MCP server · Sparx Enterprise Architect · `.qea` · UML · use case scenarios · package tree · connectors · diagrams · model search · AI agent tooling
+
+## Prerequisites
+
+- **Node.js 22+** (uses the built-in `node:sqlite` module)
+- A `.qea` file exported from Sparx Enterprise Architect
+
+## Installation
+
+### VS Code / GitHub Copilot
+
+The quickest route is the **Install in VS Code** badge at the top of this page. There is nothing to
+fill in: the server asks for your `.qea` path the first time an agent queries the model, and
+remembers the answer for next time.
+
+To register it from a terminal instead, which is handier for scripting or a shared setup, use one
+CLI call:
+
+```powershell
+code --add-mcp '{\"name\":\"enterprise-architect\",\"command\":\"npx\",\"args\":[\"-y\",\"enterprise-architect-mcp\"]}'
+```
+
+The `\"` sequences are for the `code` shim, which re-parses the argument after PowerShell has
+already handed it over — escaping with PowerShell's own backtick, or using `--%`, still arrives with
+the quotes stripped. The single quotes stop PowerShell from touching the string. On bash or zsh the
+plain form works instead:
+
+```bash
+code --add-mcp '{"name":"enterprise-architect","command":"npx","args":["-y","enterprise-architect-mcp"]}'
+```
+
+To configure it by hand instead, add to your project's `.vscode/mcp.json`:
+
+```json
+{
+  "servers": {
+    "enterprise-architect": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "enterprise-architect-mcp"]
+    }
+  }
+}
+```
+
+Nothing personal is in that file, so it can be committed as-is and each developer answers the prompt
+once on their own machine. If you would rather not be asked at all, name the path up front — as a
+trailing argument, in an `env` block, or in a gitignored `.env` in your workspace root:
+
+```ini
+EA_QEA_PATH=C:\EA\exports\model.qea
+```
+
+### Claude Desktop
+
+The same path-less configuration goes in `claude_desktop_config.json` (`%APPDATA%\Claude\` on
+Windows, `~/Library/Application Support/Claude/` on macOS):
+
+```json
+{
+  "mcpServers": {
+    "enterprise-architect": {
+      "command": "npx",
+      "args": ["-y", "enterprise-architect-mcp"]
+    }
+  }
+}
+```
+
+Claude Desktop does not run the server from a workspace folder, so a `.env` there is not reliable.
+If the client cannot show the path prompt at all, the server says so instead of failing silently, and
+you can name the path in an `env` block:
+
+```json
+"env": { "EA_QEA_PATH": "C:\\EA\\exports\\model.qea" }
+```
+
+To run straight from source instead of npm, use `"args": ["-y", "github:mm6502/enterprise-architect-mcp"]`.
+
+## Configuration
+
+The server does not need a path to start. It looks for one when an agent first queries the model, and
+takes the first source that actually opens:
+
+1. **CLI argument** — `mcp-server-ea C:\path\to\model.qea`
+2. **Environment variable** — `EA_QEA_PATH` (set in an `env` block or system env)
+3. **`.env` file** — `EA_QEA_PATH=...` in a `.env` file in the working directory
+4. **A remembered answer** — whatever you last told the prompt
+5. **The prompt** — the client asks, and a working answer is remembered for next time
+
+A source naming a path that cannot be opened is **skipped** rather than fatal, so the next source gets
+its turn. The reason goes to the server log, and once some later source opens, `ea_get_model_info`
+lists it under `ignored`. That is deliberate — a sample value left in an `env` block would otherwise
+outrank every answer you could give, and answering the prompt would never help. The cost is that a
+genuine typo is demoted quietly, so check `ea_get_model_info` if the server opens a different model
+than you expected.
+
+Skipping is only worth it when an answer can take the skipped source's place, so two cases stay
+fatal: a path you passed **on the command line** (that is this run's explicit instruction, not a
+stale default), and any broken source in a client that **cannot show a prompt** — falling through
+there would quietly open some other model instead of telling you.
+
+Answers are remembered per machine, in `%APPDATA%\enterprise-architect-mcp\` on Windows,
+`~/Library/Application Support/enterprise-architect-mcp/` on macOS, and `$XDG_CONFIG_HOME` (or
+`~/.config`) elsewhere; set `EA_MCP_CONFIG_DIR` to keep that file somewhere else. A path that does
+not open is never remembered, so asking again is enough to correct a mistyped answer.
+
+If the path points to a **directory**, the server automatically picks the newest `.qea` file by
+modification time. Pointing at your export folder means new exports are picked up without
+reconfiguring anything.
+
+### Naming the path up front
+
+If you would rather never see the prompt — a CI job, a shared image, or simply a preference — put
+the path in a gitignored `.env` in the working directory. Copy the template:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Then set your local path in `.env`:
+
+```ini
+EA_QEA_PATH=C:\EA\exports\model.qea
+```
+
+A directory works too — the newest `.qea` file in it is used:
+
+```ini
+EA_QEA_PATH=C:\EA\exports\
+```
+
+The `.env` file is gitignored — each developer sets their own path without affecting the shared
+config. It is also never committed, which is why it is the one route every new user has to set up by
+hand; answering the prompt once is what makes that unnecessary.
+
+## Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `ea_search` | Full-text search across elements, attributes, operations, and constraints. Case-insensitive across the Slovak alphabet, decodes entity-encoded text. |
+| `ea_get_element` | Full element detail — attributes, operations, diagrams it appears on, constraints (pre/post/invariant/process). Flags whether attribute multiplicity is contrastive. |
+| `ea_list_elements` | List elements in a package, optionally filtered by type. Reports total count with pagination. |
+| `ea_get_connectors` | Relationships for an element — includes feature-link resolution (which attribute/operation each end attaches to). |
+| `ea_get_diagram_elements` | Elements and connectors on a diagram, including implied connectors and feature links. |
+| `ea_get_scenarios` | Use case scenario steps with all attributes (trigger, uses, result, link, state) and scenario notes. |
+| `ea_get_package_tree` | Navigate the package hierarchy with recursive depth. |
+| `ea_list_diagrams` | Search diagrams by name and package. |
+| `ea_resolve` | Resolve analyst references (braced GUID or plain name) to model candidates with full package path. Falls back to name-prefix matching for analyst codes; every candidate carries a `match` of `guid`, `exact`, or `prefix`. |
+| `ea_get_schema` | Introspect the model's database schema — tables, columns, indexes, rowid alias. |
+| `ea_get_model_info` | Identity of the open export — file name, size, modification date, server version, and which configuration source the path came from. |
+
+### Response contract
+
+Every tool returns structured JSON with:
+
+- `_meta.sourceTables` — which database tables were consulted
+- `totalMatched` / `returned` / `truncated` — completeness metadata on every collection
+- `continuation` — exact call to retrieve the full set when truncated
+- `isError: true` + `{ error: "not_found" }` for non-existent subjects (distinct from empty results)
+
+Two fields exist to stop an inexact answer from being read as a confirmed one:
+
+- `ea_resolve` — `match` is always present; only `prefix` is an inexact match
+- `ea_get_element` — `_meta.attributes.multiplicityIsUniform: true` means the element's attributes show no multiplicity contrast, so `1..1` is not evidence of requiredness
+
+## Example Prompts
+
+Once connected, try prompts like:
+
+- "Search for elements related to 'legal entity'"
+- "Show me the package structure under the root"
+- "What are the use case scenarios for UC_SUBMIT_APPLICATION?"
+- "What elements and connectors are on diagram 0103 Application Processing?"
+- "Resolve the reference {3F2A7C10-5B4D-4e8a-9C1F-27D6E8B0A4F3}"
+- "What columns does t_connector have?"
+- "Which diagrams does element a7680 appear on?"
+
+## License
+
+Copyright (c) 2026 Michal Mracka
+
+Licensed under the EUPL — see [LICENSE](LICENSE) for the full text.
+

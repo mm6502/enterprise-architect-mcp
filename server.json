@@ -1,0 +1,33 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.mm6502/enterprise-architect-mcp",
+  "title": "Enterprise Architect",
+  "description": "Read-only search and navigation of Sparx Enterprise Architect .qea model exports",
+  "websiteUrl": "https://github.com/mm6502/enterprise-architect-mcp#readme",
+  "repository": {
+    "url": "https://github.com/mm6502/enterprise-architect-mcp",
+    "source": "github"
+  },
+  "version": "2.1.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "enterprise-architect-mcp",
+      "version": "2.1.0",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "valueHint": "qea_path",
+          "description": "Your .qea export, or a folder containing one (e.g. 'C:\\EA\\exports\\model.qea')",
+          "format": "filepath",
+          "isRequired": false
+        }
+      ]
+    }
+  ]
+}

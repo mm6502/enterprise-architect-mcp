@@ -1,0 +1,68 @@
+{
+  "name": "enterprise-architect-mcp",
+  "version": "2.1.0",
+  "mcpName": "io.github.mm6502/enterprise-architect-mcp",
+  "description": "MCP server for read-only access to Sparx Enterprise Architect .qea exports \u2014 search elements, navigate packages, read use case scenarios and traverse connectors from an AI agent",
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "enterprise-architect",
+    "sparx",
+    "sparx-ea",
+    "qea",
+    "uml",
+    "use-case",
+    "architecture",
+    "ai-agents",
+    "llm-tools",
+    "claude",
+    "sqlite",
+    "typescript"
+  ],
+  "homepage": "https://github.com/mm6502/enterprise-architect-mcp#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mm6502/enterprise-architect-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mm6502/enterprise-architect-mcp/issues"
+  },
+  "license": "EUPL-1.2",
+  "author": "Michal Mracka",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "bin": {
+    "mcp-server-ea": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "prebuild": "node -e \"const v=require('./package.json').version;const ts=new Date().toISOString().replace(/[-:T]/g,'').slice(0,14);require('fs').writeFileSync('src/version.ts','export const packageVersion = '+JSON.stringify(v+'+'+ts)+';\\n')\"",
+    "build": "tsc",
+    "precommit": "npm run build",
+    "prepublishOnly": "npm run build && npm test",
+    "watch": "tsc --watch",
+    "test": "jest",
+    "eval:run": "npx tsx eval/runner.ts",
+    "eval:model": "npx tsx eval/build-model.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "fast-xml-parser": "^5.2.3",
+    "yargs": "^17.7.2",
+    "zod": "^3.25.67"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.15.31",
+    "@types/yargs": "^17.0.33",
+    "jest": "^29.7.0",
+    "shx": "^0.3.4",
+    "ts-jest": "^29.3.4",
+    "typescript": "^5.8.3"
+  }
+}
