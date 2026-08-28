@@ -8,13 +8,13 @@
     "url": "https://github.com/mm6502/enterprise-architect-mcp",
     "source": "github"
   },
-  "version": "2.2.0-rc.2",
+  "version": "2.2.0",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "enterprise-architect-mcp",
-      "version": "2.2.0-rc.2",
+      "version": "2.2.0",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
