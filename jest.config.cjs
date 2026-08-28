@@ -12,7 +12,7 @@ module.exports = {
         tsconfig: "tsconfig.test.json",
         useESM: false,
         diagnostics: {
-          ignoreDiagnostics: [151002],
+          ignoreCodes: [151002],
         },
       },
     ],

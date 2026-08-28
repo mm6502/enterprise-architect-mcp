@@ -2,7 +2,7 @@
   "name": "enterprise-architect-mcp",
   "version": "2.1.0",
   "mcpName": "io.github.mm6502/enterprise-architect-mcp",
-  "description": "MCP server for read-only access to Sparx Enterprise Architect .qea exports \u2014 search elements, navigate packages, read use case scenarios and traverse connectors from an AI agent",
+  "description": "MCP server for read-only access to Sparx Enterprise Architect .qea exports — search elements, navigate packages, read use case scenarios and traverse connectors from an AI agent",
   "keywords": [
     "mcp",
     "mcp-server",
@@ -41,14 +41,14 @@
     "dist"
   ],
   "scripts": {
-    "prebuild": "node -e \"const v=require('./package.json').version;const ts=new Date().toISOString().replace(/[-:T]/g,'').slice(0,14);require('fs').writeFileSync('src/version.ts','export const packageVersion = '+JSON.stringify(v+'+'+ts)+';\\n')\"",
+    "version:stamp": "node scripts/stamp-version.mjs",
     "build": "tsc",
     "precommit": "npm run build",
     "prepublishOnly": "npm run build && npm test",
     "watch": "tsc --watch",
     "test": "jest",
-    "eval:run": "npx tsx eval/runner.ts",
-    "eval:model": "npx tsx eval/build-model.ts"
+    "eval:run": "tsx eval/runner.ts",
+    "eval:model": "tsx eval/build-model.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
@@ -63,6 +63,7 @@
     "jest": "^29.7.0",
     "shx": "^0.3.4",
     "ts-jest": "^29.3.4",
+    "tsx": "^4.23.12",
     "typescript": "^5.8.3"
   }
 }

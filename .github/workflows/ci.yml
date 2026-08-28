@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test-eval:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: Eval
+        run: npm run eval:run
+
+      # With version stamping moved out of `prebuild` (U1), a build no longer touches
+      # any tracked file — so any diff here means the committed dist/ is stale.
+      - name: Drift check
+        run: |
+          set -euo pipefail
+          if ! git diff --quiet; then
+            echo "::error::npm run build changed tracked files — the committed dist/ does not match src/"
+            git diff --stat
+            exit 1
+          fi
