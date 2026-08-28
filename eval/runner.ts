@@ -2,7 +2,7 @@
 /**
  * Eval runner: builds the eval model, starts the MCP server over stdio, executes the
  * tasks in tasks.json, scores the assertions, and tears the model down.
- * Usage: npx tsx eval/runner.ts [tasks-json]
+ * Usage: tsx eval/runner.ts [tasks-json]
  */
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";

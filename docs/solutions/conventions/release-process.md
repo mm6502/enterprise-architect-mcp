@@ -17,32 +17,49 @@ applies_when: "Shipping a new version of the EA MCP server"
 
 ## Context
 
-v2.0.0 release (2026-08-13) went through five pushback rounds because the release steps were done ad-hoc. Each round caught something the previous missed: stale dist, wrong version format, missing not-found handling on one tool, unupdated README. A checklist prevents repeating this.
+v2.0.0 release (2026-08-13) went through five pushback rounds because the release steps were done ad-hoc. Each round caught something the previous missed: stale dist, wrong version format, missing not-found handling on one tool, unupdated README. A checklist prevented repeating this, but the checklist itself was still hand-run — as of 2026-08 the release is a dispatched GitHub Actions workflow (`.github/workflows/release.yml`) instead.
 
 ## Guidance
 
-### Pre-release checklist
+### Releasing
 
-1. **Bump version** in `package.json` (`"version": "X.Y.Z"`) and in `server.json` — both the top-level `version` and `packages[0].version`. The registry rejects a `server.json` whose package version does not exist on npm, so all three must be the same string.
-2. **Rebuild** — `npm run build` (prebuild generates `src/version.ts` with version + UTC build timestamp)
-3. **Run tests** — `npm test` (every suite green; no count is recorded here, because a hardcoded number goes stale and then gets ignored)
-4. **Run eval** — `npm run eval:run`. It builds a synthetic model from `eval/fixture.ts` into a temp directory, runs the task set against it and cleans up after itself; no export and no arguments are needed, so the step can never be skipped for want of a file. All tasks must pass. Opportunistically, when a real `.qea` export happens to be at hand, compare its schema against `test/helpers/ea-schema.ts` — that is the one thing the synthetic model cannot check for itself.
-5. **Verify dist is current** — after the build, `git status --short` must show only `src/version.ts` and `dist/version.*`. `.gitattributes` pins `dist` to LF, so any other entry is a real change that belongs in the commit.
-6. **Update README** — tool descriptions, usage examples, breaking changes
-7. **Commit** with release notes as message — `git commit -m "feat: EA MCP Server vX.Y.Z — <summary>"`
-8. **Push** — `git push origin main` (GitHub is the only remote and the source of truth)
-9. **Publish to npm** — `npm publish --access public`. `prepublishOnly` builds and tests first.
-10. **Publish to the MCP registry** — `mcp-publisher login github` then `mcp-publisher publish`. Ownership is verified by the `mcpName` field in `package.json`, which must equal `server.json`'s `name` (`io.github.mm6502/enterprise-architect-mcp`). npm must already carry the new version when this runs.
+1. **Decide the version** per the bump criteria below.
+2. **Update README** if needed — tool descriptions, usage examples, breaking changes. This is the one content edit a human still makes; commit it to `main` before dispatching.
+3. **Dispatch the release workflow** (`Release` in the Actions tab) with that version as input. It bumps `package.json`, both `server.json` fields, and `src/version.ts` from one input, then builds, tests, evals, commits `dist/` and the version file, tags, publishes to npm over OIDC, publishes to the MCP registry, and only then pushes the commit and tag — in that order, so a failure anywhere before the push leaves `main` untouched.
+4. **Watch the run.** It reports which gate failed, if any. See Recovery below for what to do when it fails after a publish.
+
+Nothing else is manual. There is no separate rebuild, test, eval, dist-check, commit, push, or publish step — the workflow performs all of them as one dispatch.
+
+### Recovery
+
+A run that fails after the local gates (build, test, eval) pass falls into one of two states, both finished by re-dispatching the same version with `resume_after_npm` set:
+
+- **npm succeeded, the registry publish did not.** The resumed run's guard requires the version to already be on npm (the flag inverts the normal check), skips the npm publish, retries the registry publish, and pushes.
+- **Both publishes succeeded, only the push failed** (branch protection, or `main` moved between checkout and push). The resumed run's registry step finds the version already there, skips it, and the run pushes.
+
+Never re-dispatch the same version without the flag — the ordinary guard rejects it, correctly, because the version is already on npm.
+
+If a run fails at or before the local gates, nothing was committed, tagged, or published — just fix the problem and dispatch again with no flag.
 
 ### Version format
 
-`package.json` has the semver (`2.0.0`). The prebuild script generates:
+`package.json` carries the plain semver (`2.1.0`). The release workflow's stamping script (`scripts/stamp-version.mjs`) writes `src/version.ts` as:
 
-```js
-export const packageVersion = "2.0.0+20260813105415";
+```ts
+export const packageVersion = "2.1.0+g1a2b3c4";
 ```
 
-The `+YYYYMMDDHHmmss` suffix is a UTC build timestamp — unique per build, no self-reference problem (commit SHA cannot reference itself). Reported in `ea_get_model_info` as `serverVersion`.
+The `+g<sha7>` suffix is the short SHA — supplied by CI from `GITHUB_SHA` — of the commit the release was built from; `git show 1a2b3c4` resolves it. It is deliberately absent from `package.json`'s own `version` field and from what npm publishes, because `npm publish` strips build metadata from the manifest version (`libnpmpublish` runs `semver.clean()` over it).
+
+Between releases, `src/version.ts` on `main` still names the last released commit, not the commit actually checked out — a checkout running at `HEAD` between releases reports a SHA that is real and resolvable, but not its own. Reported in `ea_get_model_info` as `serverVersion`.
+
+### Publishing configuration
+
+npm publishing uses [trusted publishing over OIDC](https://docs.npmjs.com/trusted-publishers) — no stored secret. On npmjs.com, `enterprise-architect-mcp` has a trusted publisher entry naming this repository and the workflow filename `.github/workflows/release.yml` exactly; npm does not validate the entry until a publish attempts to use it. The release job also declares `environment: release`, a GitHub environment whose deployment-branch rule restricts it to `main` — without that restriction, npm's trusted-publisher entry (which binds to owner, repository, and workflow filename, not to a branch) would let a `workflow_dispatch` from any branch carrying a same-path `release.yml` publish under this package's name.
+
+If OIDC is ever rejected for a dispatch-triggered publish, the fallback is an `NPM_TOKEN` secret on the `release` environment, passed to `npm publish` with `--provenance --access public`. It should be a granular access token scoped to this package, publish-only, with an expiry of at most 90 days. Retry OIDC and revoke the token once it works again; do not let the fallback become the steady state.
+
+The MCP registry publish authenticates the same way (`mcp-publisher login github-oidc`), granted by the OIDC `repository_owner` claim on `io.github.mm6502/*` — this extends to every repository under the account, not only this one. Ownership is proven by the `mcpName` field in `package.json`, which must equal `server.json`'s `name`.
 
 ### Breaking change criteria (bump major)
 
@@ -81,10 +98,10 @@ Every time a new version ships — whether a major release, a patch, or a pushba
 
 ## Examples
 
-**Bad:** bump version → push → realize dist is stale → amend → realize README is wrong → amend again → realize one tool was missed → amend again.
+**Bad:** dispatch a release → realize the README was stale → dispatch again with a wasted npm publish already live under the previous version's content.
 
-**Good:** bump version → build → test → eval → verify dist → update README → commit → push → done.
+**Good:** update README → decide the version → dispatch → watch the run.
 
 ## Related
 
-- [repair-verification-signals-dont-work-around-them.md](repair-verification-signals-dont-work-around-them.md) — why steps 4 and 5 above were rewritten rather than left as an unresolvable input and a baked-in workaround
+- [repair-verification-signals-dont-work-around-them.md](repair-verification-signals-dont-work-around-them.md) — why the old checklist's dist-verification step was rewritten rather than left as an unresolvable input and a baked-in workaround; the drift check in `.github/workflows/ci.yml` is that fix's current form.

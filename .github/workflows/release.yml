@@ -1,0 +1,179 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (semver, e.g. 2.2.0 or 2.2.0-rc.1)"
+        required: true
+        type: string
+      resume_after_npm:
+        description: "Resume a run that already published to npm but failed after (registry publish and/or push)"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  VERSION: ${{ inputs.version }}
+  RESUME_AFTER_NPM: ${{ inputs.resume_after_npm }}
+  NPM_PACKAGE: enterprise-architect-mcp
+  REGISTRY_SERVER_NAME: io.github.mm6502/enterprise-architect-mcp
+  MCP_PUBLISHER_VERSION: v1.8.1
+  MCP_PUBLISHER_SHA256: a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Upgrade npm
+        run: npm install -g npm@latest
+
+      # Guard first: reject a bad version, a stale ref, a reused tag, or a version
+      # already on npm (inverted when resuming) — before any file is touched.
+      - name: Guard
+        run: |
+          set -euo pipefail
+
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::version '$VERSION' is not valid semver"
+            exit 1
+          fi
+
+          remote_main_sha=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "$GITHUB_SHA" != "$remote_main_sha" ]; then
+            echo "::error::dispatched commit $GITHUB_SHA is not the current tip of main ($remote_main_sha)"
+            exit 1
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null 2>&1; then
+            echo "::error::tag v$VERSION already exists"
+            exit 1
+          fi
+
+          npm_has_version=false
+          if npm view "$NPM_PACKAGE@$VERSION" version >/dev/null 2>&1; then
+            npm_has_version=true
+          fi
+
+          if [ "$RESUME_AFTER_NPM" = "true" ]; then
+            if [ "$npm_has_version" != "true" ]; then
+              echo "::error::resume_after_npm was set but $VERSION is not on npm — nothing to resume"
+              exit 1
+            fi
+          elif [ "$npm_has_version" = "true" ]; then
+            echo "::error::$VERSION is already published on npm"
+            exit 1
+          fi
+
+      # One step, so a failure here aborts before anything is committed: the three
+      # fields that must agree (package.json, server.json's two fields) are all
+      # written before the stamp, which is written from the checked-out commit.
+      - name: Bump version and stamp build identity
+        run: |
+          set -euo pipefail
+          npm version "$VERSION" --no-git-tag-version
+          node -e '
+            const fs = require("fs");
+            const server = JSON.parse(fs.readFileSync("server.json", "utf8"));
+            server.version = process.env.VERSION;
+            if (server.packages && server.packages[0]) {
+              server.packages[0].version = process.env.VERSION;
+            }
+            fs.writeFileSync("server.json", JSON.stringify(server, null, 2) + "\n");
+          '
+          node scripts/stamp-version.mjs
+
+      - name: Install, build, test, eval
+        run: |
+          npm ci
+          npm run build
+          npm test
+          npm run eval:run
+
+      # Commit and tag locally only — nothing is pushed until both publishes succeed,
+      # so a failure past this point leaves origin/main and the tag namespace untouched.
+      - name: Commit and tag locally
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add dist src/version.ts package.json package-lock.json server.json
+          git commit -m "release: v$VERSION"
+          git tag "v$VERSION"
+
+      - name: Publish to npm
+        if: env.RESUME_AFTER_NPM != 'true'
+        run: |
+          set -euo pipefail
+          if [[ "$VERSION" == *-* ]]; then
+            dist_tag=next
+          else
+            dist_tag=latest
+          fi
+          npm publish --tag "$dist_tag"
+
+      - name: Publish to the MCP registry
+        run: |
+          set -euo pipefail
+
+          curl -sSL -o mcp-publisher.tar.gz \
+            "https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz"
+          echo "${MCP_PUBLISHER_SHA256}  mcp-publisher.tar.gz" | sha256sum -c -
+          tar xzf mcp-publisher.tar.gz mcp-publisher
+          ./mcp-publisher login github-oidc
+
+          encoded_name=$(node -e 'console.log(encodeURIComponent(process.env.REGISTRY_SERVER_NAME))')
+
+          attempt=0
+          max_attempts=5
+          until [ "$attempt" -ge "$max_attempts" ]; do
+            attempt=$((attempt + 1))
+
+            status=$(curl -s -o /dev/null -w '%{http_code}' \
+              "https://registry.modelcontextprotocol.io/v0.1/servers/${encoded_name}/versions/${VERSION}")
+            if [ "$status" = "200" ]; then
+              echo "registry already has $VERSION — treating as published"
+              break
+            fi
+
+            if ./mcp-publisher publish; then
+              break
+            fi
+
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "::error::mcp-publisher publish failed after $max_attempts attempts"
+              exit 1
+            fi
+
+            echo "publish attempt $attempt failed, retrying after propagation delay..."
+            sleep $((attempt * 10))
+          done
+
+      # Both publishes are permanent by this point (or this run resumed one that
+      # already was); pushing last means a failure before here leaves origin/main
+      # and the tag namespace untouched, so the same dispatch can simply be re-run.
+      - name: Push release commit and tag
+        run: |
+          set -euo pipefail
+          git push origin HEAD:main
+          git push origin "v$VERSION"
