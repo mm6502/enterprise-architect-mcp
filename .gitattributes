@@ -1,2 +1,4 @@
 # tsc writes dist with LF, so core.autocrlf=true would flag every build as modified.
 dist/** text eol=lf
+# scripts/stamp-version.mjs writes this with LF too; same reasoning.
+src/version.ts text eol=lf

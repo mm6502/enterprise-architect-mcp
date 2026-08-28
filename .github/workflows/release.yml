@@ -29,12 +29,10 @@ permissions:
   contents: read
 
 jobs:
-  release:
+  gates:
     runs-on: ubuntu-latest
-    environment: release
     permissions:
-      contents: write
-      id-token: write
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -43,10 +41,6 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24"
-          registry-url: "https://registry.npmjs.org"
-
-      - name: Upgrade npm
-        run: npm install -g npm@latest
 
       # Guard first: reject a bad version, a stale ref, a reused tag, or a version
       # already on npm (inverted when resuming) — before any file is touched.
@@ -110,6 +104,56 @@ jobs:
           npm test
           npm run eval:run
 
+      # Only the files the publish job needs to commit and pack — no .git, no
+      # node_modules. The publish job never runs an install script from this tree.
+      - name: Upload bumped, built tree
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-tree
+          retention-days: 1
+          path: |
+            dist
+            src/version.ts
+            package.json
+            package-lock.json
+            server.json
+
+  publish:
+    needs: gates
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      # A real checkout, not the artifact, so this job gets working push credentials —
+      # actions/checkout wires those up; an artifact has no such side effect.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Upgrade npm
+        run: npm install -g npm@latest
+
+      # Overwrites package.json, package-lock.json, server.json, src/version.ts and
+      # dist/ with the gates job's bumped, built, tested output.
+      - name: Download bumped, built tree
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-tree
+          path: .
+          overwrite: true
+
+      # --ignore-scripts: no dependency's install script runs in a job that holds
+      # publish credentials. The tree is already built and tested; nothing here needs to run.
+      - name: Install
+        run: npm ci --ignore-scripts
+
       # Commit and tag locally only — nothing is pushed until both publishes succeed,
       # so a failure past this point leaves origin/main and the tag namespace untouched.
       - name: Commit and tag locally
@@ -130,7 +174,7 @@ jobs:
           else
             dist_tag=latest
           fi
-          npm publish --tag "$dist_tag"
+          npm publish --tag "$dist_tag" --ignore-scripts
 
       - name: Publish to the MCP registry
         run: |
