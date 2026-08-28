@@ -1,6 +1,6 @@
 {
   "name": "enterprise-architect-mcp",
-  "version": "2.2.0-rc.1",
+  "version": "2.2.0-rc.2",
   "mcpName": "io.github.mm6502/enterprise-architect-mcp",
   "description": "MCP server for read-only access to Sparx Enterprise Architect .qea exports — search elements, navigate packages, read use case scenarios and traverse connectors from an AI agent",
   "keywords": [
