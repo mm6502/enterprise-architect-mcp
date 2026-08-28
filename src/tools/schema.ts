@@ -138,7 +138,7 @@ export function configureSchemaTools(server: McpServer, model: ModelAccess): voi
 
   server.tool(
     "ea_get_model_info",
-    "Report which .qea export file the server has open: `fileName` is the citable identity, alongside `fileSizeBytes`, `lastModified`, and the `serverVersion` that produced the answer. The full local path is also returned as `resolvedPath`, with `resolvedPathNote` explaining why it is environment detail rather than something to cite. `configuration` says where that path came from — `source` in words, `sourceId` as one of argument/environment/dotenv/remembered/prompt, and the `configured` value behind it — plus any `ignored` settings that were skipped, each with the `reason` it could not be opened, and `shadowed` ones a higher-priority source outranked; `configurationNote` says how much of that is safe to repeat.",
+    "Report which .qea export file the server has open: `fileName` is the citable identity, alongside `fileSizeBytes`, `lastModified`, and the `serverVersion` that produced the answer. The full local path is also returned as `resolvedPath`, with `resolvedPathNote` explaining why it is environment detail rather than something to cite. `configuration` says where that path came from — `source` in words, `sourceId` as one of argument/environment/dotenv/remembered/prompt, and the `configured` value behind it — plus any `skipped` settings, each with the `reason` it could not be opened, and `shadowed` ones a higher-priority source outranked; `configurationNote` says how much of that is safe to repeat.",
     {},
     READ_ONLY,
     async () => {
@@ -174,7 +174,7 @@ export function configureSchemaTools(server: McpServer, model: ModelAccess): voi
               source: describeSource(origin.source),
               sourceId: origin.source,
               configured: origin.configured,
-              ignored: origin.ignored.map((entry) => ({
+              skipped: origin.ignored.map((entry) => ({
                 source: describeSource(entry.source),
                 sourceId: entry.source,
                 configured: entry.configured,
@@ -187,7 +187,7 @@ export function configureSchemaTools(server: McpServer, model: ModelAccess): voi
               })),
             },
             configurationNote:
-              "Everything under configuration is local environment detail: configured values are filesystem paths and each ignored reason quotes one in full. Repeat them only when explaining a configuration problem to the user who owns the machine, never as model identity.",
+              "Everything under configuration is local environment detail: configured values are filesystem paths and each skipped reason quotes one in full. Repeat them only when explaining a configuration problem to the user who owns the machine, never as model identity.",
           }),
           _meta: { sourceTables: [] as string[] },
         };

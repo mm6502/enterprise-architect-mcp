@@ -1,0 +1,7 @@
+# Snyk (https://snyk.io) policy file
+version: v1.25.0
+exclude:
+  global:
+    # Transpiled output duplicates every finding already reported against src/.
+    - dist/**
+    - coverage/**
