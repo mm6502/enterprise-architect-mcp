@@ -1,28 +1,71 @@
 # Agent Eval Tasks
 
-Structured analytical tasks for manual subagent dispatch. Each task simulates a real analyst
-question. Every required fact below is verifiable through the `ea_*` tools against the synthetic
+Structured analytical tasks for manual subagent dispatch. Each task simulates either a real
+analyst question or a server- and schema-introspection question an analyst asks about the tooling
+itself. Every required fact below is verifiable through the `ea_*` tools against the synthetic
 eval model — no private export is involved.
 
 ## Standing the model up
 
-The eval model is built from `eval/fixture.ts` into a temporary directory. To dispatch these
-tasks by hand:
+The eval model is built from `eval/fixture.ts` into a temporary directory. Nothing is ever
+generated from a real `.qea`: `fixture.ts` creates a SQLite file, applies the `EA_SCHEMA` DDL
+from `test/helpers/ea-schema.ts` — the same schema the unit fixture uses, so the two can only
+differ in data — and inserts every row by hand. Its file header explains which shape each row
+group exists to probe. To dispatch these tasks by hand:
 
 ```powershell
 npm run build
 npm run eval:model
 ```
 
-Point the server at the printed path (`node dist/index.js <path>`) and give the subagent the
-`ea_*` tools. The directory is a temp artifact — delete it when finished.
+`eval:model` prints the path of the built `.qea`. Unlike `npm run eval:run`, it does **not**
+clean up after itself — the agent needs the file to stay put while the tasks run.
+
+Then point an MCP client at that path and give the agent the `ea_*` tools:
+
+- **Any MCP client:** run the server as `node dist/index.js <printed-path>`. A path given on the
+  command line outranks `EA_QEA_PATH` in `.env`, so a configured private export is shadowed, not
+  a conflict.
+- **This repo in VS Code:** `.vscode/mcp.json` starts the server with no path argument, which
+  makes it open whatever `.env` points at — a real export, not the eval model. Add the printed
+  path as a second entry in `args`:
+
+  ```jsonc
+  "args": ["${workspaceFolder}/dist/index.js", "C:\\...\\ea-eval-XXXXXX\\eval-model.qea"]
+  ```
+
+  Saving the file restarts the server on its own; the `mcp.restartServer` command is not needed
+  and fails when called directly.
+
+**Confirm which model is open before scoring anything.** Call `ea_get_model_info`: `fileName`
+must be `eval-model.qea` and `configuration.sourceId` must be `argument`. Every task below is
+scored against fixture data, so a run against a real export scores noise.
+
+When finished, revert the `args` edit (otherwise the server stays pinned to a temp path that is
+about to disappear) and delete the temp directory that contains the printed `.qea` file.
 
 The model is a small Slovak-language contract-administration model: use cases, screens, domain
 classes, an application layer, and a code-list package. It deliberately contains duplicate names
 across packages, entity-encoded notes, feature-linked connectors, an over-long attribute list,
-and two diagrams that share a name — the shapes these tasks probe.
+and a scenario step that cites a rule whose text lives only in the element's constraints — the
+shapes these tasks probe.
 
-Score against the rubric on each task.
+Score against the rubric on each task. Scoring requires the agent's full tool-call transcript,
+not just its final answer: many facts below score which tools were selected, in what order, and
+whether the agent noticed a truncation or shadowing flag.
+
+`eval/tasks.json` and this file cover different ground. The automated suite owns single-call
+assertions about tool output — given these arguments, this response. This rubric owns what the
+automated suite cannot assert: which tool the agent reaches for, how it chains calls when one
+response does not hold the answer, and whether it reports its findings honestly. A new task
+belongs here only if it needs more than one call, if it scores which tool the agent reaches for,
+or if it scores the agent's reporting rather than the server's response.
+
+Task ids are stable identifiers retained from a larger draft set. The gaps in the A series are
+deliberate, and the ids do not correspond to the case names in `eval/tasks.json`. A tasks ask a
+single targeted question, even when answering it takes more than one call; B tasks either run a
+multi-step investigation or score how honestly the agent reports a partial, empty, or provenance
+result.
 
 ---
 
@@ -34,7 +77,9 @@ Which entity attribute does the field `poleCisloZmluvy` fill?"
 **Expected key facts:**
 
 - [REQUIRED] The target attribute is `cisloZmluvy` on `Zmluva`
-- [REQUIRED] The answer names the connector that carries the mapping, not just the two elements
+- [REQUIRED] The answer identifies the carrying connector by its `id` — these mapping connectors
+  are unnamed and three Realisations join the same two elements, so neither the type nor the
+  endpoints single one out
 - [BONUS] The mapping is visible only via connector feature links (`StyleEx` LFSP/LFEP)
 - [BONUS] Agent used `ea_search` or `ea_resolve` to find the screen, then `ea_get_connectors`
 
@@ -83,9 +128,12 @@ business rules apply to this use case?"
 
 **Expected key facts:**
 
-- [REQUIRED] Search returns `ÚČTOVNÁ JEDNOTKA`, whose note stores the term entity-encoded
-- [REQUIRED] Agent reports the match came from the note, not the name
-- [BONUS] Searching `zavazok` without diacritics returns the same element
+- [REQUIRED] Agent reports the matching element and cites `matchedIn` to show the hit came from
+  the note rather than the name
+- [REQUIRED] Agent reports `totalMatched` and `truncated` instead of presenting the returned rows
+  as self-evidently the whole set
+- [BONUS] Agent checks the diacritics-folded form `zavazok` and reports that it resolves to the
+  same element
 
 **Scoring:** Required = 1pt each. Bonus = 0.5. Max: 2.5.
 
@@ -98,10 +146,9 @@ business rules apply to this use case?"
 **Expected key facts:**
 
 - [REQUIRED] Agent reports that two elements carry this name
-- [REQUIRED] Each candidate is distinguished by its package path — `Doménový model` versus
-  `Aplikačná architektúra`
-- [BONUS] Agent used `ea_resolve`, reported `totalMatched` of 2, and asked which one was meant
-  instead of silently picking one
+- [REQUIRED] Agent asks which one was meant instead of silently picking one
+- [BONUS] Agent used `ea_resolve`, reported `totalMatched` of 2, and distinguished the candidates
+  by package path — `Doménový model` versus `Aplikačná architektúra`
 
 **Scoring:** Required = 1pt each. Bonus = 0.5. Max: 2.5.
 
@@ -111,6 +158,9 @@ business rules apply to this use case?"
 
 **Question:** "Does `t_connector` have any column that stores style information? What columns
 does it have?"
+
+This is a schema-introspection task, not an analyst question — it scores whether the agent
+discovers an unfamiliar column instead of assuming the tool surface is the whole model.
 
 **Expected key facts:**
 
@@ -130,11 +180,15 @@ what it requires."
 
 **Expected key facts:**
 
+- [REQUIRED] Agent lands on `UC_OBS_4101: Založenie zmluvy` (Object_ID 101), not the decoy
+  element named exactly `UC_OBS_4101` (Object_ID 103) that `ea_resolve` returns alone under
+  exact-beats-prefix
+- [REQUIRED] If the first lookup yields no scenarios and no constraints, the agent treats that as
+  an unresolved reference and widens with `ea_search` — never as the answer
 - [REQUIRED] Agent finds the step whose `uses` attribute is `PRAV_OBS_8501`
 - [REQUIRED] Agent retrieves the constraint of that name via `ea_get_element` on the use case
-- [REQUIRED] The constraint text comes back decoded, with no raw `&#NNN;` entities
 
-**Scoring:** Required = 1pt each. Max: 3.
+**Scoring:** Required = 1pt each. Max: 4.
 
 ---
 
@@ -157,12 +211,17 @@ what it requires."
 
 **Question:** "Which model export is the server reading? Where did that path come from?"
 
+This is a server-introspection task, not an analyst question. Note that the scorer has already
+called `ea_get_model_info` during setup, so the facts are known-true going in — what is scored is
+whether the agent reads the `configuration` block instead of stopping at the file name.
+
 **Expected key facts:**
 
 - [REQUIRED] Agent uses `ea_get_model_info`
 - [REQUIRED] Reports the file name, size, and modification time
-- [BONUS] Reports that the path came from the command line, and that any other configured
-  candidates were shadowed — the `configuration` block, not just the file name
+- [BONUS] Reports `configuration.sourceId` as `argument`, and reports the `shadowed` candidates if
+  any — a correctly reported empty `shadowed` earns the point too, since it is populated only when
+  `.env` or `EA_QEA_PATH` also names a path
 
 **Scoring:** Required = 1pt each. Bonus = 0.5. Max: 2.5.
 
@@ -178,8 +237,8 @@ define this screen's behaviour?"
 
 - [REQUIRED] Agent finds the screen and its connectors
 - [REQUIRED] Agent follows the feature link from `poleStavZmluvy` to `stavZmluvy` on `Zmluva`
-- [REQUIRED] Agent reaches `UC_OBS_4101` through the association on `Zmluva` and reports its
-  constraints, including `PRAV_OBS_8501`
+- [REQUIRED] Agent reaches `UC_OBS_4101: Založenie zmluvy` through the association on `Zmluva`
+  and reports its constraints, including `PRAV_OBS_8501`
 - [BONUS] Agent notes that `stavZmluvy` defaults to `Návrh` and that a code list
   (`Číselník stavov zmluvy`) governs its values
 - [BONUS] Agent presents a coherent chain — screen field → entity attribute → use case →
