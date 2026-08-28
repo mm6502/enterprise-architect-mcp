@@ -102,7 +102,7 @@ takes the first source that actually opens:
 
 A source naming a path that cannot be opened is **skipped** rather than fatal, so the next source gets
 its turn. The reason goes to the server log, and once some later source opens, `ea_get_model_info`
-lists it under `ignored`. That is deliberate — a sample value left in an `env` block would otherwise
+lists it under `skipped`. That is deliberate — a sample value left in an `env` block would otherwise
 outrank every answer you could give, and answering the prompt would never help. The cost is that a
 genuine typo is demoted quietly, so check `ea_get_model_info` if the server opens a different model
 than you expected.
