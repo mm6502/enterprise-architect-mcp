@@ -57,6 +57,37 @@
     ]
   },
   {
+    "id": "search-06-match-evidence-single-attribute",
+    "tool": "ea_search",
+    "description": "A match found only in an attribute's notes names the attribute and quotes its text",
+    "args": { "query": "číslo zmluvy" },
+    "assertions": [
+      { "type": "equals", "path": "totalMatched", "expected": 1 },
+      { "type": "equals", "path": "results[0].Object_ID", "expected": 120 },
+      { "type": "equals", "path": "results[0].matchedIn", "expected": "t_attribute.Notes" },
+      { "type": "equals", "path": "results[0].matches[0].matchedIn", "expected": "t_attribute.Notes" },
+      { "type": "equals", "path": "results[0].matches[0].sourceId", "expected": 210 },
+      { "type": "equals", "path": "results[0].matches[0].sourceName", "expected": "cisloZmluvy" },
+      { "type": "equals", "path": "results[0].matches[0].snippet", "expected": "Jednoznačné číslo zmluvy" },
+      { "type": "equals", "path": "results[0]._meta.matches", "expected": { "totalMatched": 1, "returned": 1, "truncated": false } }
+    ]
+  },
+  {
+    "id": "search-07-match-evidence-capped",
+    "tool": "ea_search",
+    "description": "An element matching in several fields lists its evidence in ladder order and reports what it withheld",
+    "args": { "query": "zmluv", "objectType": "Class" },
+    "assertions": [
+      { "type": "equals", "path": "totalMatched", "expected": 4 },
+      { "type": "equals", "path": "results[0].Object_ID", "expected": 120 },
+      { "type": "equals", "path": "results[0].matches[0].matchedIn", "expected": "t_object.Name" },
+      { "type": "equals", "path": "results[0].matches[1].matchedIn", "expected": "t_object.Note" },
+      { "type": "equals", "path": "results[0].matches[2].matchedIn", "expected": "t_attribute.Name" },
+      { "type": "equals", "path": "results[0].matches[2].sourceId", "expected": 210 },
+      { "type": "equals", "path": "results[0]._meta.matches", "expected": { "totalMatched": 6, "returned": 3, "truncated": true } }
+    ]
+  },
+  {
     "id": "resolve-01-exact-beats-prefix",
     "tool": "ea_resolve",
     "description": "An exact name is returned alone, never diluted by the element that only starts with it",

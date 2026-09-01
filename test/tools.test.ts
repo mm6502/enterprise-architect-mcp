@@ -199,6 +199,26 @@ describe("ea_search", () => {
     const data = res.json();
     expect(data.results.length).toBeGreaterThan(0);
   });
+
+  // Guards the defect where match evidence shipped without the description announcing it —
+  // the description-contract harness only reaches top-level fields, not nested ones like `matches`.
+  it("documents match evidence and note-preview centring, and both appear in a real response", async () => {
+    const { tools } = await client.listTools();
+    const description = tools.find((t) => t.name === "ea_search")?.description ?? "";
+    expect(description).toMatch(/matches/);
+    expect(description).toMatch(/snippet/);
+    expect(description).toMatch(/centre/);
+
+    const res = await callTool("ea_search", { query: "právnickej osoby" });
+    const data = res.json();
+    const elem = data.results[0];
+    expect(elem.matches[0]).toEqual(
+      expect.objectContaining({ matchedIn: expect.any(String), snippet: expect.any(String) })
+    );
+    expect(elem._meta.matches).toEqual(
+      expect.objectContaining({ totalMatched: expect.any(Number), returned: expect.any(Number), truncated: expect.any(Boolean) })
+    );
+  });
 });
 
 // ─── ea_get_element ───
