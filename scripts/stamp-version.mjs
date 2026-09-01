@@ -14,14 +14,16 @@ if (!sha) {
   process.exit(1);
 }
 
-if (sha.length < 7) {
+const normalizedSha = sha.trim().toLowerCase();
+
+if (!/^[0-9a-f]{7,40}$/.test(normalizedSha)) {
   console.error(
-    `stamp-version: commit SHA "${sha}" is shorter than 7 characters, refusing to emit a truncated identifier`,
+    `stamp-version: commit SHA "${sha}" is not a 7-40 character hex string`,
   );
   process.exit(1);
 }
 
-const sha7 = sha.slice(0, 7);
+const sha7 = normalizedSha.slice(0, 7);
 const { version } = JSON.parse(readFileSync(join(cwd, "package.json"), "utf8"));
 const packageVersion = `${version}+g${sha7}`;
 

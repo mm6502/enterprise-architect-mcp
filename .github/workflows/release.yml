@@ -40,7 +40,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: "22"
 
       # Guard first: reject a bad version, a stale ref, a reused tag, or a version
       # already on npm (inverted when resuming) — before any file is touched.
@@ -134,11 +134,8 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: "22"
           registry-url: "https://registry.npmjs.org"
-
-      - name: Upgrade npm
-        run: npm install -g npm@latest
 
       # Overwrites package.json, package-lock.json, server.json, src/version.ts and
       # dist/ with the gates job's bumped, built, tested output.
