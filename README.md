@@ -180,7 +180,7 @@ hand; answering the prompt once is what makes that unnecessary.
 
 | Tool | Description |
 |------|-------------|
-| `ea_search` | Full-text search across elements, attributes, operations, and constraints. Case- and diacritic-insensitive across European Latin alphabets, decodes entity-encoded text. Each result carries the evidence for its match — the field, the attribute or operation it came from, and a snippet of the author's own text. |
+| `ea_search` | Full-text search across elements, attributes, operations, and constraints. Case- and diacritic-insensitive across European Latin alphabets, decodes entity-encoded text. Each result carries the evidence for its match — the field, the attribute or operation it came from, and a snippet of the author's own text. Accepts a `packageScope` (package id or name) to restrict results to a package and its descendants, and reports a package breakdown axis when unscoped. |
 | `ea_get_element` | Full element detail — attributes, operations, diagrams it appears on, constraints (pre/post/invariant/process). Flags whether attribute multiplicity is contrastive. |
 | `ea_list_elements` | List elements in a package, optionally filtered by type. Windowed: reports the total and pages with `offset`. |
 | `ea_get_connectors` | Relationships for an element — includes feature-link resolution (which attribute/operation each end attaches to). |

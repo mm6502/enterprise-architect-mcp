@@ -6,6 +6,7 @@ import type { SQLInputValue } from "node:sqlite";
 import { z } from "zod";
 import { decodeEntities, foldText } from "../text.js";
 import { breakdownApplies, buildBreakdown, buildContinuation, countBy, isTruncated, limitParam, offsetParam } from "./windowing.js";
+import { getPackageSubtree, resolvePackageScope } from "../package-path.js";
 
 interface CorpusEntry {
   sourceTable: string;
@@ -255,7 +256,7 @@ function collectEvidence(
 export function configureSearchTools(server: McpServer, model: ModelAccess): void {
   server.tool(
     "ea_search",
-    "Search Enterprise Architect model elements by name, alias, notes, attribute names/notes, operation names/notes, or constraint notes. Matching is case- and diacritic-insensitive across European Latin alphabets and sees through entity-encoded text. Matching elements are returned in `results`, strongest match first, each with a decoded note preview and a truncation flag; equally strong matches fall back to the model's internal identity, a stable but artificial order. Each result also carries `matches`, the evidence for why it was returned: the field that matched, the id and name of the attribute, operation or constraint it came from, and a snippet of the author's own text around the match. Evidence is strongest-first and capped, and `_meta.matches` on the result reports how many matches were found and how many were withheld. The note preview centres on the match when the element's own note is what matched. Walk a large result set with `offset` rather than a larger `limit`; while rows remain, `continuation` names the next call. When far more elements match than one window can hold, `breakdown` reports how they distribute, so the next call can narrow by `objectType` or `stereotype` instead of paging.",
+    "Search Enterprise Architect model elements by name, alias, notes, attribute names/notes, operation names/notes, or constraint notes. Matching is case- and diacritic-insensitive across European Latin alphabets and sees through entity-encoded text. Matching elements are returned in `results`, strongest match first, each with a decoded note preview and a truncation flag; equally strong matches fall back to the model's internal identity, a stable but artificial order. Each result also carries `matches`, the evidence for why it was returned: the field that matched, the id and name of the attribute, operation or constraint it came from, and a snippet of the author's own text around the match. Evidence is strongest-first and capped, and `_meta.matches` on the result reports how many matches were found and how many were withheld. The note preview centres on the match when the element's own note is what matched. `packageScope` restricts results to a package (given as its id or its name) and its descendants. Walk a large result set with `offset` rather than a larger `limit`; while rows remain, `continuation` names the next call. When far more elements match than one window can hold, `breakdown` reports how they distribute — by `objectType`, `stereotype`, or, unless already scoped, by `packageScope` (reported as the matching package's id, which the next call can pass straight back) — so the next call can narrow instead of paging.",
     {
       query: z.string().describe("Search term to find across all model text (names, notes, aliases, attributes, operations, constraints)"),
       objectType: z
@@ -263,13 +264,43 @@ export function configureSearchTools(server: McpServer, model: ModelAccess): voi
         .optional()
         .describe("Filter by object type (e.g., Class, UseCase, Activity, Screen, Requirement, Interface, Component)"),
       stereotype: z.string().optional().describe("Filter by stereotype"),
+      packageScope: z
+        .union([z.number().int(), z.string()])
+        .optional()
+        .describe("Restrict results to this package and its descendants, given as a package id or name"),
       limit: limitParam(25),
       offset: offsetParam,
     },
     READ_ONLY,
-    async ({ query, objectType, stereotype, limit, offset }) => {
+    async ({ query, objectType, stereotype, packageScope, limit, offset }) => {
       const db = await model.database();
       try {
+        let subtree: Set<number> | undefined;
+        if (packageScope !== undefined) {
+          const resolution = resolvePackageScope(db, packageScope);
+          if (resolution.kind === "not_found") {
+            return {
+              content: [{ type: "text" as const, text: JSON.stringify({
+                error: "not_found",
+                message: `Package scope "${packageScope}" was not found.`,
+                packageScope,
+              }, null, 2) }],
+              isError: true,
+            };
+          }
+          if (resolution.kind === "ambiguous") {
+            return {
+              content: [{ type: "text" as const, text: JSON.stringify({
+                error: "ambiguous_package",
+                message: `Package scope "${packageScope}" matches more than one package; use a package id instead.`,
+                candidates: resolution.candidates,
+              }, null, 2) }],
+              isError: true,
+            };
+          }
+          subtree = getPackageSubtree(db, resolution.packageId);
+        }
+
         const entries = buildCorpus(db);
         const foldedQuery = foldText(query).trim();
 
@@ -345,8 +376,11 @@ export function configureSearchTools(server: McpServer, model: ModelAccess): voi
         `;
         const allRows = db.prepare(sql).all(...sortedIds, ...filterParams) as any[];
 
+        // Package_ID is on every fetched row, so scoping is a subtree membership check, not a query change.
+        const scopedRows = subtree ? allRows.filter((r: any) => subtree.has(r.Package_ID)) : allRows;
+
         // IN (...) returns rows in whatever order the plan produces, so rank order is restored here.
-        const rowMap = new Map(allRows.map((r: any) => [r.Object_ID, r]));
+        const rowMap = new Map(scopedRows.map((r: any) => [r.Object_ID, r]));
         const totalMatched = sortedIds.filter((id) => rowMap.has(id)).length;
         const sorted = sortedIds
           .filter((id) => rowMap.has(id))
@@ -392,12 +426,13 @@ export function configureSearchTools(server: McpServer, model: ModelAccess): voi
           ? buildBreakdown({
               objectType: objectType ? undefined : countBy(sorted, (r: any) => r.Object_Type),
               stereotype: stereotype ? undefined : countBy(sorted, (r: any) => r.Stereotype),
+              packageScope: packageScope !== undefined ? undefined : countBy(sorted, (r: any) => r.Package_ID),
             })
           : undefined;
 
         const continuation = buildContinuation(
           "ea_search",
-          { query, objectType, stereotype, limit },
+          { query, objectType, stereotype, packageScope, limit },
           offset,
           results.length,
           totalMatched

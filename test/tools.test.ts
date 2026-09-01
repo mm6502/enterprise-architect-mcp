@@ -219,6 +219,48 @@ describe("ea_search", () => {
       expect.objectContaining({ totalMatched: expect.any(Number), returned: expect.any(Number), truncated: expect.any(Boolean) })
     );
   });
+
+  it("restricts results to a package and its descendants", async () => {
+    // "osoba" matches objects 5 (pkg 2), 6 (pkg 3) and 7 (pkg 5) unscoped.
+    const unscoped = await callTool("ea_search", { query: "osoba" });
+    expect(unscoped.json().totalMatched).toBe(3);
+
+    // Package 4's subtree is {4, 5, 6} — only object 7 (pkg 5) qualifies.
+    const scoped = await callTool("ea_search", { query: "osoba", packageScope: 4 });
+    const data = scoped.json();
+    expect(data.totalMatched).toBe(1);
+    expect(data.results[0].Object_ID).toBe(7);
+  });
+
+  it("resolves a package scope given by name", async () => {
+    // Package 6, "Resolve fixtures", holds only objects 9-11.
+    const res = await callTool("ea_search", { query: "resolve", packageScope: "Resolve fixtures" });
+    const data = res.json();
+    expect(data.totalMatched).toBe(2);
+    expect(data.results.map((r: any) => r.Object_ID).sort()).toEqual([10, 11]);
+  });
+
+  it("reports an ambiguous package name rather than guessing", async () => {
+    // "Use Cases" names both package 3 and package 5.
+    const res = await callTool("ea_search", { query: "osoba", packageScope: "Use Cases" });
+    expect(res.isError).toBe(true);
+    const data = res.json();
+    expect(data.error).toBe("ambiguous_package");
+    expect(data.candidates).toHaveLength(2);
+  });
+
+  it("reports a missing package scope as a structured error", async () => {
+    const res = await callTool("ea_search", { query: "osoba", packageScope: 9999 });
+    expect(res.isError).toBe(true);
+    expect(res.json().error).toBe("not_found");
+  });
+
+  it("carries the package scope through continuation", async () => {
+    const res = await callTool("ea_search", { query: "resolve", packageScope: 6, limit: 1 });
+    const data = res.json();
+    expect(data.truncated).toBe(true);
+    expect(data.continuation.arguments.packageScope).toBe(6);
+  });
 });
 
 // ─── ea_get_element ───
