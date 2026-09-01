@@ -216,6 +216,26 @@ export interface AgentRunConfig {
 }
 
 /**
+ * Every `ea_*` tool the server exposes. Passed to `--available-tools` so the agent under
+ * measurement can reach only the server being measured — not the CLI's own native file/shell
+ * tools. Their absence here is a real defect this harness shipped with, not a hypothetical one:
+ * a first campaign run left this unset, and one transcript (mai-code-1.1-flash, task B2) used
+ * the CLI's own `view` tool to read this repo's eval/agent-tasks.md rubric directly and quoted
+ * "I checked the repo's eval task for this exact question" in its final answer — a measurement
+ * contamination, not merely an unscoped-permission risk. 20 of 198 runs in that campaign used a
+ * native tool (`view`, `grep`, `glob`, or `powershell`) at least once; those runs' tool-call
+ * counts were excluded from the R19 comparison, and their correctness cannot be trusted either.
+ */
+// Prefixed with the configured MCP server name — the CLI's allowlist rejects bare tool
+// names as "Unknown tool name", which silently drops every tool (not just the intended
+// native ones), leaving the model with nothing to call at all.
+const EA_TOOL_NAMES = [
+  "ea_search", "ea_get_element", "ea_list_elements", "ea_get_connectors",
+  "ea_get_package_tree", "ea_get_diagram_elements", "ea_get_scenarios",
+  "ea_resolve", "ea_list_diagrams", "ea_get_schema", "ea_get_model_info",
+].map((name) => `mcp-server-ea-${name}`);
+
+/**
  * Spawning a Windows .cmd/.ps1 shim needs a shell, but `spawn(bin, args, { shell: true })`
  * hands Node's own re-quoting a job it gets wrong for multi-word arguments — Node's DEP0190
  * warns exactly about this combination (an args array under shell:true is only concatenated,
@@ -246,6 +266,7 @@ export function runAgentTask(prompt: string, config: AgentRunConfig): Promise<{ 
       "--no-custom-instructions",
       "--no-ask-user",
       "--allow-all-tools",
+      "--available-tools", EA_TOOL_NAMES.join(","),
       "--model", config.model,
       "--effort", config.effort,
     ];
