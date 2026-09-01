@@ -137,6 +137,14 @@ jobs:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
 
+      # download-artifact's overwrite only replaces files present in the artifact — it
+      # won't remove a stale dist/ file that the gates job's build no longer produces.
+      # Clear the paths first so the publish job can't retain leftovers from checkout.
+      - name: Clean working tree for artifact overlay
+        run: |
+          rm -rf dist
+          rm -f src/version.ts package.json package-lock.json server.json
+
       # Overwrites package.json, package-lock.json, server.json, src/version.ts and
       # dist/ with the gates job's bumped, built, tested output.
       - name: Download bumped, built tree
