@@ -24,3 +24,7 @@ coverage/
 
 # Written by npm run eval:run on every invocation
 eval/results.json
+
+# Written by npm run eval:agent on every invocation
+eval/agent-results.json
+.agent-runner-mcp-config.json
