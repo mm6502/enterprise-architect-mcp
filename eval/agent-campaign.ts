@@ -92,7 +92,7 @@ function parseArgs(argv: string[]) {
   const modelsArg = get("--models");
   if (!baselineBuild || !candidateBuild || !modelPath || !modelsArg) {
     throw new Error(
-      "Usage: agent-campaign --baseline-build <path> --candidate-build <path> --model-path <path> --models m1,m2,m3 [--repeats 3] [--effort low] [--out file.jsonl] [--task-ids A1,A2]"
+      "Usage: agent-campaign --baseline-build <path> --candidate-build <path> --model-path <path> --models m1,m2,m3 [--repeats 3] [--effort low] [--out file.jsonl] [--task-ids A1,A2] [--run-id id]"
     );
   }
   const taskIdsArg = get("--task-ids");
@@ -105,6 +105,8 @@ function parseArgs(argv: string[]) {
     effort: get("--effort", "low")!,
     out: get("--out", "campaign-results.jsonl")!,
     taskIds: taskIdsArg ? new Set(taskIdsArg.split(",").map((s) => s.trim())) : undefined,
+    // Unique per invocation by default so concurrent campaigns never share an mcp-config path.
+    runId: get("--run-id", Math.random().toString(36).slice(2, 8))!,
   };
 }
 
@@ -124,7 +126,7 @@ async function main() {
   console.log(`Campaign: ${arms.length} arms x ${args.models.length} models x ${tasks.length} tasks x ${args.repeats} repeats = ${total} runs`);
 
   for (const arm of arms) {
-    const configPath = resolve(process.cwd(), `.campaign-tmp/mcp-config-${arm.name}.json`);
+    const configPath = resolve(process.cwd(), `.campaign-tmp/mcp-config-${arm.name}-${args.runId}.json`);
     writeFileSync(configPath, buildMcpConfig({ serverName: "mcp-server-ea", serverEntry: arm.entry, modelPath }));
 
     for (const model of args.models) {
