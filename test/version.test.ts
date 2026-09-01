@@ -22,38 +22,45 @@ function runStampVersion(dir: string, args: string[], env: NodeJS.ProcessEnv = {
 }
 
 describe("stamp-version.mjs", () => {
-  let dir: string;
+  let dir: string | undefined;
 
   afterEach(() => {
-    rmSync(dir, { recursive: true, force: true });
+    if (dir) rmSync(dir, { recursive: true, force: true });
+    dir = undefined;
   });
 
   it("writes X.Y.Z+g followed by the first 7 characters of a 40-character SHA", () => {
     dir = makeFixtureDir("2.2.0");
-    runStampVersion(dir, ["a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"]);
-    expect(readFileSync(join(dir, "src/version.ts"), "utf8")).toBe(
+    runStampVersion(dir!, ["a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"]);
+    expect(readFileSync(join(dir!, "src/version.ts"), "utf8")).toBe(
       'export const packageVersion = "2.2.0+ga1b2c3d";\n',
     );
   });
 
   it("reads the SHA from GITHUB_SHA when no argument is given", () => {
     dir = makeFixtureDir("2.2.0");
-    runStampVersion(dir, [], { GITHUB_SHA: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678" });
-    expect(readFileSync(join(dir, "src/version.ts"), "utf8")).toBe(
+    runStampVersion(dir!, [], { GITHUB_SHA: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678" });
+    expect(readFileSync(join(dir!, "src/version.ts"), "utf8")).toBe(
       'export const packageVersion = "2.2.0+ga1b2c3d";\n',
     );
   });
 
   it("exits non-zero and writes nothing given no SHA argument and no GITHUB_SHA", () => {
     dir = makeFixtureDir("2.2.0");
-    expect(() => runStampVersion(dir, [])).toThrow();
-    expect(existsSync(join(dir, "src/version.ts"))).toBe(false);
+    expect(() => runStampVersion(dir!, [])).toThrow();
+    expect(existsSync(join(dir!, "src/version.ts"))).toBe(false);
   });
 
   it("fails rather than emitting a truncated identifier for a SHA shorter than 7 characters", () => {
     dir = makeFixtureDir("2.2.0");
-    expect(() => runStampVersion(dir, ["abc123"])).toThrow();
-    expect(existsSync(join(dir, "src/version.ts"))).toBe(false);
+    expect(() => runStampVersion(dir!, ["abc123"])).toThrow();
+    expect(existsSync(join(dir!, "src/version.ts"))).toBe(false);
+  });
+
+  it("fails rather than emitting a build identity from a non-hex SHA", () => {
+    dir = makeFixtureDir("2.2.0");
+    expect(() => runStampVersion(dir!, ["not-a-real-sha-value"])).toThrow();
+    expect(existsSync(join(dir!, "src/version.ts"))).toBe(false);
   });
 });
 
