@@ -215,6 +215,26 @@ export interface AgentRunConfig {
   effort: string;
 }
 
+/**
+ * Spawning a Windows .cmd/.ps1 shim needs a shell, but `spawn(bin, args, { shell: true })`
+ * hands Node's own re-quoting a job it gets wrong for multi-word arguments — Node's DEP0190
+ * warns exactly about this combination (an args array under shell:true is only concatenated,
+ * not escaped), and it was observed directly: a prompt containing spaces arrived at the CLI
+ * split into separate arguments. Folding everything into one pre-quoted command string, with
+ * zero-length args passed to spawn, keeps escaping in our hands and avoids the warning (it
+ * triggers only when shell is true *and* the args list is non-empty). Non-Windows needs
+ * neither a shell nor this escaping.
+ */
+function quoteArg(arg: string): string {
+  return /[\s"]/.test(arg) ? `"${arg.replace(/"/g, '\\"')}"` : arg;
+}
+
+function spawnCli(bin: string, args: string[]) {
+  if (process.platform !== "win32") return spawn(bin, args);
+  const commandLine = [bin, ...args].map(quoteArg).join(" ");
+  return spawn(commandLine, [], { shell: true });
+}
+
 /** Spawns one non-interactive Copilot CLI run and returns its parsed JSONL transcript. */
 export function runAgentTask(prompt: string, config: AgentRunConfig): Promise<{ events: ParsedEvent[]; raw: string }> {
   return new Promise((resolvePromise, reject) => {
@@ -229,7 +249,7 @@ export function runAgentTask(prompt: string, config: AgentRunConfig): Promise<{ 
       "--model", config.model,
       "--effort", config.effort,
     ];
-    const child = spawn(config.copilotBin, args, { shell: true });
+    const child = spawnCli(config.copilotBin, args);
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (chunk) => { stdout += chunk; });
