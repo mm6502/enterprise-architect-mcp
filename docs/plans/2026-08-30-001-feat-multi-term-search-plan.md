@@ -221,7 +221,7 @@ flowchart TB
 - What the second list is called, given that `query` now carries the required terms.
 - What a snippet does when several terms match far apart in one field.
 - Whether the position of a match within a long note is a ranking signal: a term appearing only in the last sentence of a long note suggests the note is not about it. `coverage` already expresses the same idea as a length ratio and is deliberately zeroed for notes, where it would only measure document length. Position would not have that defect. Belongs with R10, not with the response shape.
-- The evidence budget — the cap and the snippet width together. Settled by U5's measurement, starting from three matches of roughly 150 characters.
+- The evidence budget — the cap and the snippet width together. Settled by U5's measurement, starting from three matches of roughly 150 characters. **Not yet settled as of 2026-09-01**: a combined-stage campaign at the starting budget showed more tool calls under the candidate on B1/B4 even where correctness was already maxed on both arms — see U5's 2026-09-01 note. That result cannot be attributed to the budget specifically, since the same campaign also carries Stage 2's package scope/breakdown; the sweep across narrower and wider settings, isolated to a Stage-1-only build (`12fccc3`), still has to run before this question closes.
 
 ### Sources / Research
 
@@ -360,6 +360,11 @@ Listed in execution order, which is not U-ID order — U10 was added last but ru
 - **Test scenarios.** Not a code unit. Its output is a recorded comparison and a settled budget.
 - **Verification.** `npm run eval:model`, then the harness from U10 over both builds; or manual dispatch scored as in [eval/agent-tasks.md](eval/agent-tasks.md).
 - **Dependencies.** U10; baseline half precedes U1; comparison half follows U4.
+- **2026-09-01 campaign, and why it does not close U5.** A six-model, 3-repeat, 11-task campaign ran `origin/main` (pre-Stage-1) against this branch's `HEAD` at the default budget (three matches, ~150 characters). That comparison does not satisfy U5 as written, for one reason KD12 already named: `HEAD` carries U7/U8 (Stage 2's package scope and breakdown) alongside U1–U4, so the candidate arm conflates two stages' effects into one number, and neither U5 (Stage 1 alone against `148b51d`) nor U9 (Stage 2 alone against Stage 1's released behaviour) is what got measured. The campaign also skipped KTD8's own protocol of starting at two columns and widening only on disagreement — all six models ran from the outset, which cost more of the grading budget than the matrix required at this stage. The commit boundary for a clean Stage-1-only build exists and is unused: `12fccc3` (test/eval coverage, the last commit before `6da2897` adds package scope) — building that commit in its own worktree gives the true U5 comparison against `148b51d`, at KTD8's two-column cost.
+
+  What the combined-stage number showed, for the record: on B1 and B4 — the two tasks with the largest tool-call deltas — the models that already answered correctly on both arms (`gemini-3.7-flash`, `gpt-5.6-luna` on B1; nearly every model on B4) spent *more* tool calls under the candidate, not fewer, at the current budget. That is the direct opposite of R19/U5's success criterion ("fewer tool calls... measured over tasks both answered correctly"), but it is a combined-stage result and the budget sweep this unit calls for (narrower and wider than the starting three-matches/~150-characters setting) has not been run at all — so neither a pass nor a fail is settled yet. See repo memory (`enterprise-architect-mcp.md`) for the full per-task grading. Recommendation: run the isolated `12fccc3`-vs-`148b51d` two-column comparison, sweep the budget on it, before deciding U6.
+
+  **Added sweep criterion, 2026-09-01.** A real-world session reported large `ea_search`/`ea_get_element`/`ea_get_diagram_elements` responses tripping the MCP client's own large-output truncation (result written to a file, a second call needed to read it) — a cost the tool-call count does not see at all, since it is a client-side round-trip, not a server one. The budget sweep should therefore weigh a narrower setting's effect on response size, not only its effect on the agent's own tool-call count.
 
 ### U6. Stage 1 release
 
@@ -397,6 +402,8 @@ Listed in execution order, which is not U-ID order — U10 was added last but ru
 - **Dependencies.** U7, U8.
 
 Stage 3 is deliberately unplanned. Its shape depends on a question the plan cannot answer by argument — whether the second list filters or ranks — and on what Stage 2's measurement shows about window crowding. It is planned after Stage 2 ships.
+
+**2026-09-01, a third real-world episode.** A live session against the candidate build asked "Explain the difference between CP and NP pohľadávka"; a 4-word `query` returned zero results while shorter 2-word queries worked, because today's single-contiguous-substring test needs those words adjacent and verbatim. The agent's own introspection named exactly R1/R6's gap (no visibility into which term emptied the result) as the top friction point, unprompted. Confirms the Problem Frame's motivation on the currently-shipped surface; changes nothing about the stage being unplanned or its sequencing after Stage 2.
 
 ---
 
