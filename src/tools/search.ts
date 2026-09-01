@@ -17,6 +17,57 @@ interface CorpusEntry {
 
 const corpora = new WeakMap<Database, CorpusEntry[]>();
 
+const MAX_INLINE_MATCHES = 3;
+const SNIPPET_CHARS = 150;
+const NOTE_PREVIEW_CHARS = 200;
+
+interface MatchEvidence {
+  matchedIn: string;
+  sourceId: number;
+  sourceName: string | null;
+  snippet: string;
+  snippetTruncated: boolean;
+}
+
+function wordSpans(s: string): Array<[number, number]> {
+  const spans: Array<[number, number]> = [];
+  const re = /\S+/g;
+  for (let m = re.exec(s); m !== null; m = re.exec(s)) spans.push([m.index, m.index + m[0].length]);
+  return spans;
+}
+
+/**
+ * No step in foldText creates or removes whitespace, so the k-th word of the folded text
+ * is the k-th word of the original. That is what locates a match in the author's own text
+ * without keeping an offset map between the two forms.
+ */
+function excerptAround(original: string, folded: string, foldedQuery: string, budget: number): { text: string; truncated: boolean } {
+  const at = folded.indexOf(foldedQuery);
+  const foldedWords = wordSpans(folded);
+  const words = wordSpans(original);
+
+  // A word that folds away entirely would break the correspondence; fall back rather than misquote.
+  if (at < 0 || foldedWords.length !== words.length || words.length === 0) {
+    return { text: original.slice(0, budget), truncated: original.length > budget };
+  }
+
+  const end = at + foldedQuery.length;
+  let lo = foldedWords.findIndex(([, e]) => e > at);
+  if (lo < 0) lo = 0;
+  let hi = lo;
+  while (hi + 1 < foldedWords.length && foldedWords[hi + 1][0] < end) hi++;
+
+  for (let grew = true; grew; ) {
+    grew = false;
+    if (lo > 0 && words[hi][1] - words[lo - 1][0] <= budget) { lo--; grew = true; }
+    if (hi + 1 < words.length && words[hi + 1][1] - words[lo][0] <= budget) { hi++; grew = true; }
+  }
+
+  const head = lo > 0 ? "…" : "";
+  const tail = hi < words.length - 1 ? "…" : "";
+  return { text: head + original.slice(words[lo][0], words[hi][1]) + tail, truncated: head !== "" || tail !== "" };
+}
+
 /** True when the query begins somewhere other than mid-word. */
 function startsAtWordBoundary(text: string, query: string): boolean {
   for (let idx = text.indexOf(query); idx > 0; idx = text.indexOf(query, idx + 1)) {
@@ -89,10 +140,122 @@ function buildCorpus(db: Database): CorpusEntry[] {
   return entries;
 }
 
+function selectIn(db: Database, sql: string, ids: Set<number>): any[] {
+  if (ids.size === 0) return [];
+  const list = [...ids];
+  return db.prepare(`${sql} (${list.map(() => "?").join(",")})`).all(...list) as any[];
+}
+
+interface EvidenceSources {
+  rows: Map<number, any>;
+  attributes: Map<number, any>;
+  operations: Map<number, any>;
+  constraints: Map<number, any[]>;
+}
+
+/** The author's own text behind a corpus entry, with the name of whatever carried it. */
+function originalFor(entry: CorpusEntry, src: EvidenceSources): { text: string; name: string | null } | null {
+  const decoded = (raw: unknown, name: string | null) =>
+    typeof raw === "string" && raw.length > 0 ? { text: decodeEntities(raw)!, name } : null;
+
+  if (entry.sourceTable === "t_object") {
+    return decoded(src.rows.get(entry.objectId)?.[entry.sourceField], null);
+  }
+  if (entry.sourceTable === "t_attribute") {
+    const a = src.attributes.get(entry.sourceId);
+    return a ? decoded(entry.sourceField === "Name" ? a.Name : a.Notes, a.Name ?? null) : null;
+  }
+  if (entry.sourceTable === "t_operation") {
+    const op = src.operations.get(entry.sourceId);
+    return op ? decoded(entry.sourceField === "Name" ? op.Name : op.Notes, op.Name ?? null) : null;
+  }
+  if (entry.sourceTable === "t_objectconstraint") {
+    // Constraint rows carry no identity of their own, so the right note is found by its folded form.
+    const row = (src.constraints.get(entry.sourceId) ?? [])
+      .find((c) => typeof c.Notes === "string" && foldText(decodeEntities(c.Notes)!) === entry.foldedText);
+    return row ? decoded(row.Notes, row.Constraint ?? null) : null;
+  }
+  return null;
+}
+
+/**
+ * Why each windowed element matched. Scanning is confined to the window, so the cost is
+ * bounded by what the response shows rather than by the corpus.
+ */
+function collectEvidence(
+  db: Database,
+  entries: CorpusEntry[],
+  rows: Map<number, any>,
+  windowIds: Set<number>,
+  foldedQuery: string
+): Map<number, { items: MatchEvidence[]; totalMatched: number }> {
+  const hits = new Map<number, CorpusEntry[]>();
+  for (const entry of entries) {
+    if (!windowIds.has(entry.objectId) || !entry.foldedText.includes(foldedQuery)) continue;
+    const list = hits.get(entry.objectId);
+    if (list) list.push(entry);
+    else hits.set(entry.objectId, [entry]);
+  }
+
+  const kept = new Map<number, { entries: CorpusEntry[]; totalMatched: number }>();
+  for (const [objectId, list] of hits) {
+    const ranked = list
+      .map((e) => ({ e, ...scoreMatch(e, foldedQuery) }))
+      .sort((a, b) => a.rank - b.rank || b.coverage - a.coverage || a.e.sourceId - b.e.sourceId)
+      .slice(0, MAX_INLINE_MATCHES)
+      .map((r) => r.e);
+    kept.set(objectId, { entries: ranked, totalMatched: list.length });
+  }
+
+  const attributeIds = new Set<number>();
+  const operationIds = new Set<number>();
+  const constraintOwners = new Set<number>();
+  for (const { entries: shown } of kept.values()) {
+    for (const e of shown) {
+      if (e.sourceTable === "t_attribute") attributeIds.add(e.sourceId);
+      else if (e.sourceTable === "t_operation") operationIds.add(e.sourceId);
+      else if (e.sourceTable === "t_objectconstraint") constraintOwners.add(e.sourceId);
+    }
+  }
+
+  const constraints = new Map<number, any[]>();
+  for (const c of selectIn(db, `SELECT Object_ID, "Constraint", Notes FROM t_objectconstraint WHERE Object_ID IN`, constraintOwners)) {
+    const list = constraints.get(c.Object_ID);
+    if (list) list.push(c);
+    else constraints.set(c.Object_ID, [c]);
+  }
+
+  const src: EvidenceSources = {
+    rows,
+    attributes: new Map(selectIn(db, "SELECT ID, Name, Notes FROM t_attribute WHERE ID IN", attributeIds).map((a) => [a.ID, a])),
+    operations: new Map(selectIn(db, "SELECT OperationID, Name, Notes FROM t_operation WHERE OperationID IN", operationIds).map((o) => [o.OperationID, o])),
+    constraints,
+  };
+
+  const evidence = new Map<number, { items: MatchEvidence[]; totalMatched: number }>();
+  for (const [objectId, { entries: shown, totalMatched }] of kept) {
+    const items: MatchEvidence[] = [];
+    for (const entry of shown) {
+      const original = originalFor(entry, src);
+      if (!original) continue;
+      const excerpt = excerptAround(original.text, entry.foldedText, foldedQuery, SNIPPET_CHARS);
+      items.push({
+        matchedIn: `${entry.sourceTable}.${entry.sourceField}`,
+        sourceId: entry.sourceId,
+        sourceName: original.name,
+        snippet: excerpt.text,
+        snippetTruncated: excerpt.truncated,
+      });
+    }
+    evidence.set(objectId, { items, totalMatched });
+  }
+  return evidence;
+}
+
 export function configureSearchTools(server: McpServer, model: ModelAccess): void {
   server.tool(
     "ea_search",
-    "Search Enterprise Architect model elements by name, alias, notes, attribute names/notes, operation names/notes, or constraint notes. Matching is case- and diacritic-insensitive across European Latin alphabets and sees through entity-encoded text. Matching elements are returned in `results`, strongest match first, each with a decoded note preview and a truncation flag; equally strong matches fall back to the model's internal identity, a stable but artificial order. Walk a large result set with `offset` rather than a larger `limit`; while rows remain, `continuation` names the next call. When far more elements match than one window can hold, `breakdown` reports how they distribute, so the next call can narrow by `objectType` or `stereotype` instead of paging.",
+    "Search Enterprise Architect model elements by name, alias, notes, attribute names/notes, operation names/notes, or constraint notes. Matching is case- and diacritic-insensitive across European Latin alphabets and sees through entity-encoded text. Matching elements are returned in `results`, strongest match first, each with a decoded note preview and a truncation flag; equally strong matches fall back to the model's internal identity, a stable but artificial order. Each result also carries `matches`, the evidence for why it was returned: the field that matched, the id and name of the attribute, operation or constraint it came from, and a snippet of the author's own text around the match. Evidence is strongest-first and capped, and `_meta.matches` on the result reports how many matches were found and how many were withheld. The note preview centres on the match when the element's own note is what matched. Walk a large result set with `offset` rather than a larger `limit`; while rows remain, `continuation` names the next call. When far more elements match than one window can hold, `breakdown` reports how they distribute, so the next call can narrow by `objectType` or `stereotype` instead of paging.",
     {
       query: z.string().describe("Search term to find across all model text (names, notes, aliases, attributes, operations, constraints)"),
       objectType: z
@@ -191,10 +354,18 @@ export function configureSearchTools(server: McpServer, model: ModelAccess): voi
 
         const window = sorted.slice(offset, offset + limit);
         const truncated = isTruncated(offset, window.length, totalMatched);
+        const evidence = collectEvidence(db, entries, rowMap, new Set(window.map((r: any) => r.Object_ID)), foldedQuery);
         const results = window.map((r: any) => {
           const decodedNote = decodeEntities(r.Note);
-          const notePreview = decodedNote ? decodedNote.slice(0, 200) : null;
-          const notePreviewTruncated = decodedNote != null && decodedNote.length > 200;
+          const matchedIn = matchMap.get(r.Object_ID)?.matchedIn ?? null;
+          // Previewing from the start hides the reason for a match that lies deeper in the note.
+          const notePreview = !decodedNote
+            ? null
+            : matchedIn === "t_object.Note"
+              ? excerptAround(decodedNote, foldText(decodedNote), foldedQuery, NOTE_PREVIEW_CHARS).text
+              : decodedNote.slice(0, NOTE_PREVIEW_CHARS);
+          const notePreviewTruncated = decodedNote != null && decodedNote.length > NOTE_PREVIEW_CHARS;
+          const matches = evidence.get(r.Object_ID);
           return {
             Object_ID: r.Object_ID,
             Object_Type: r.Object_Type,
@@ -205,7 +376,15 @@ export function configureSearchTools(server: McpServer, model: ModelAccess): voi
             PackageName: r.PackageName,
             NotePreview: notePreview,
             notePreviewTruncated,
-            matchedIn: matchMap.get(r.Object_ID)?.matchedIn ?? null,
+            matchedIn,
+            matches: matches?.items ?? [],
+            _meta: {
+              matches: {
+                totalMatched: matches?.totalMatched ?? 0,
+                returned: matches?.items.length ?? 0,
+                truncated: (matches?.totalMatched ?? 0) > (matches?.items.length ?? 0),
+              },
+            },
           };
         });
 

@@ -133,6 +133,56 @@ describe("ea_search", () => {
     expect(req.NotePreview.length).toBe(200);
   });
 
+  it("names the field and the attribute that produced the match", async () => {
+    const res = await callTool("ea_search", { query: "právnickej" });
+    const data = res.json();
+    const elem = data.results.find((e: any) => e.Object_ID === 6);
+    expect(elem).toBeDefined();
+    expect(elem.matches[0].matchedIn).toBe("t_attribute.Notes");
+    expect(elem.matches[0].sourceId).toBe(4);
+    expect(elem.matches[0].sourceName).toBe("názov");
+  });
+
+  it("quotes the author's text rather than the folded form used for matching", async () => {
+    const res = await callTool("ea_search", { query: "pravnickej" });
+    const data = res.json();
+    const elem = data.results.find((e: any) => e.Object_ID === 6);
+    expect(elem.matches[0].snippet).toBe("Názov právnickej osoby");
+    expect(elem.matches[0].snippetTruncated).toBe(false);
+  });
+
+  it("orders evidence by the same ladder as the results, and caps it", async () => {
+    const res = await callTool("ea_search", { query: "a", limit: 100 });
+    const data = res.json();
+    const elem = data.results.find((e: any) => e.Object_ID === 2);
+    expect(elem.matches.map((m: any) => m.matchedIn)).toEqual([
+      "t_object.Name",
+      "t_object.Note",
+      "t_attribute.Name",
+    ]);
+    expect(elem._meta.matches.returned).toBe(3);
+    expect(elem._meta.matches.totalMatched).toBeGreaterThan(3);
+    expect(elem._meta.matches.truncated).toBe(true);
+  });
+
+  it("reports evidence for an element matched only on its own name", async () => {
+    const res = await callTool("ea_search", { query: "Zoznam zmlúv" });
+    const data = res.json();
+    const elem = data.results.find((e: any) => e.Object_ID === 3);
+    expect(elem.matches).toHaveLength(1);
+    expect(elem.matches[0].snippet).toBe("Zoznam zmlúv");
+    expect(elem._meta.matches).toEqual({ totalMatched: 1, returned: 1, truncated: false });
+  });
+
+  it("centres NotePreview on the match when the element's own note is what matched", async () => {
+    const res = await callTool("ea_search", { query: "preddavku" });
+    const data = res.json();
+    const req = data.results.find((e: any) => e.Object_ID === 8);
+    expect(req.matchedIn).toBe("t_object.Note");
+    expect(req.NotePreview).toContain("preddavku");
+    expect(req.NotePreview.startsWith("…")).toBe(true);
+  });
+
   it("reports totalMatched and continuation when capped", async () => {
     const res = await callTool("ea_search", { query: "a", limit: 2 });
     const data = res.json();
