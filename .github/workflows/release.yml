@@ -137,6 +137,12 @@ jobs:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
 
+      # Node 22 bundles npm 10.x, which predates npm's OIDC trusted-publishing support
+      # (needs >=11.5.1) that this job's publish step relies on — pinned, not @latest,
+      # so the upgrade is reproducible.
+      - name: Upgrade npm
+        run: npm install -g npm@11.19.1
+
       # download-artifact's overwrite only replaces files present in the artifact — it
       # won't remove a stale dist/ file that the gates job's build no longer produces.
       # Clear the paths first so the publish job can't retain leftovers from checkout.
