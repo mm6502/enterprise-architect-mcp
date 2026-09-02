@@ -152,13 +152,14 @@ jobs:
           rm -f src/version.ts package.json package-lock.json server.json
 
       # Overwrites package.json, package-lock.json, server.json, src/version.ts and
-      # dist/ with the gates job's bumped, built, tested output.
+      # dist/ with the gates job's bumped, built, tested output. No `overwrite` input
+      # here — actions/download-artifact@v8 doesn't have one (warns "Unexpected input(s)"
+      # if set); the preceding clean step is what makes this safe.
       - name: Download bumped, built tree
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: release-tree
           path: .
-          overwrite: true
 
       # --ignore-scripts: no dependency's install script runs in a job that holds
       # publish credentials. The tree is already built and tested; nothing here needs to run.
