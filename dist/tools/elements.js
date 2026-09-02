@@ -39,7 +39,7 @@ export function configureElementTools(server, model) {
                 type: a.Type,
                 scope: a.Scope,
                 stereotype: a.Stereotype,
-                notes: a.Notes,
+                notes: decodeEntities(a.Notes),
                 multiplicity: formatMultiplicity(a),
                 default: a.Default,
             }));
@@ -66,12 +66,12 @@ export function configureElementTools(server, model) {
                     returnType: op.Type,
                     scope: op.Scope,
                     stereotype: op.Stereotype,
-                    notes: op.Notes,
+                    notes: decodeEntities(op.Notes),
                     parameters: params.map((p) => ({
                         name: p.Name,
                         type: p.Type,
                         kind: p.Kind,
-                        notes: p.Notes,
+                        notes: decodeEntities(p.Notes),
                     })),
                 };
             });

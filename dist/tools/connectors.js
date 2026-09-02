@@ -46,7 +46,7 @@ function parseFeatureLinks(db, styleEx) {
     return { sourceFeature, targetFeature };
 }
 export function configureConnectorTools(server, model) {
-    server.tool("ea_get_connectors", "Get all relationships (connectors) for a given element. `connectors` lists what the element is connected to and how (Realisation, Dependency, Association, etc.), each entry naming its `source` and `dest` ends. Feature links show which specific attribute or operation each end attaches to.", {
+    server.tool("ea_get_connectors", "Get all relationships (connectors) for a given element. `connectors` lists what the element is connected to and how (Realisation, Dependency, Association, etc.), each entry naming its `source` and `dest` ends. For Generalization connectors, `source` is always the specific (child) type and `dest` the general (parent) type \u2014 each end also carries a `role` making this explicit without needing to reason about direction. Filter by `connectorType` and `direction` to list an element's direct children (incoming Generalization) or direct parent(s) (outgoing Generalization) without a diagram. Feature links show which specific attribute or operation each end attaches to.", {
         elementId: z.coerce.number().describe("The Object_ID of the element to get connectors for"),
         connectorType: z
             .string()
@@ -113,8 +113,9 @@ export function configureConnectorTools(server, model) {
                     destCard: r.DestCard,
                     sourceRole: r.SourceRole || null,
                     destRole: r.DestRole || null,
-                    source: { id: r.Start_Object_ID, name: r.SourceName, type: r.SourceType, stereotype: r.SourceStereotype },
-                    dest: { id: r.End_Object_ID, name: r.DestName, type: r.DestType, stereotype: r.DestStereotype },
+                    // Generalization: Start_Object_ID is always the specific (child) type, End_Object_ID the general (parent) type.
+                    source: { id: r.Start_Object_ID, name: r.SourceName, type: r.SourceType, stereotype: r.SourceStereotype, ...(r.Connector_Type === "Generalization" ? { role: "child" } : {}) },
+                    dest: { id: r.End_Object_ID, name: r.DestName, type: r.DestType, stereotype: r.DestStereotype, ...(r.Connector_Type === "Generalization" ? { role: "parent" } : {}) },
                     sourceFeature,
                     targetFeature,
                 };

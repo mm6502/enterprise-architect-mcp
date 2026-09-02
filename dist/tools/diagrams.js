@@ -44,7 +44,7 @@ function parseFeatureLinks(db, styleEx) {
     return { sourceFeature, targetFeature };
 }
 export function configureDiagramTools(server, model) {
-    server.tool("ea_get_diagram_elements", "Get all elements and connectors placed on a specific diagram: the `diagram` itself, plus `elements` and `connectors`. Connectors include feature-link resolution showing which attribute or operation each end attaches to. The connector list is the union of explicit t_diagramlinks rows and implied connectors (both ends on the diagram).", {
+    server.tool("ea_get_diagram_elements", "Get all elements and connectors placed on a specific diagram: the `diagram` itself, plus `elements` and `connectors`. `elements` already includes free-text `Note` diagram objects, which often carry a legend or abbreviation definitions an agent would otherwise miss. Connectors include feature-link resolution showing which attribute or operation each end attaches to. The connector list is the union of explicit t_diagramlinks rows and implied connectors (both ends on the diagram).", {
         diagramId: z.coerce.number().describe("The Diagram_ID to get elements for"),
     }, READ_ONLY, async ({ diagramId }) => {
         const db = await model.database();

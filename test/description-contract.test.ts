@@ -54,6 +54,8 @@ const SAMPLE_CALLS: [string, Record<string, unknown>][] = [
   ["ea_list_elements", { packageId: 3 }],
   ["ea_list_elements", { packageId: 3, limit: 1 }],
   ["ea_get_connectors", { elementId: 1 }],
+  // Surfaces the Generalization child/parent `role` branch.
+  ["ea_get_connectors", { elementId: 5, connectorType: "Generalization" }],
   ["ea_get_diagram_elements", { diagramId: 1 }],
   ["ea_get_scenarios", { elementId: 1 }],
   ["ea_get_package_tree", {}],

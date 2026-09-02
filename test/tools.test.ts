@@ -381,6 +381,21 @@ describe("ea_get_element", () => {
     // Entity-decoded notes
     expect(data.constraints[0].notes).toContain("Právnická osoba musí mať platné IČO");
   });
+
+  it("decodes entity-encoded notes on attributes", async () => {
+    const res = await callTool("ea_get_element", { elementId: 6 }); // PRÁVNICKÁ OSOBA
+    const data = res.json();
+    const nazov = data.attributes.find((a: any) => a.name === "názov");
+    expect(nazov.notes).toBe("Názov právnickej osoby");
+  });
+
+  it("decodes entity-encoded notes on operations and their parameters", async () => {
+    const res = await callTool("ea_get_element", { elementId: 6 }); // PRÁVNICKÁ OSOBA
+    const data = res.json();
+    const getNazov = data.operations.find((op: any) => op.name === "getNázov");
+    expect(getNazov.notes).toBe("Názov právnickej osoby");
+    expect(getNazov.parameters[0].notes).toBe("Identifikátor záznamu");
+  });
 });
 
 // ─── ea_list_elements ───
@@ -447,6 +462,31 @@ describe("ea_get_connectors", () => {
     const res = await callTool("ea_get_connectors", { elementId: 2, connectorType: "Association" });
     const data = res.json();
     expect(data.connectors.every((c: any) => c.type === "Association")).toBe(true);
+  });
+
+  it("names child/parent roles on Generalization connectors, queried from the parent's incoming side", async () => {
+    const res = await callTool("ea_get_connectors", { elementId: 5, connectorType: "Generalization", direction: "incoming" });
+    const data = res.json();
+    expect(data.connectors).toHaveLength(1);
+    expect(data.connectors[0].source.role).toBe("child");
+    expect(data.connectors[0].dest.role).toBe("parent");
+    expect(data.connectors[0].source.id).toBe(6); // PRÁVNICKÁ OSOBA (child)
+    expect(data.connectors[0].dest.id).toBe(5); // Osoba (parent)
+  });
+
+  it("names child/parent roles on Generalization connectors, queried from the child's outgoing side", async () => {
+    const res = await callTool("ea_get_connectors", { elementId: 6, connectorType: "Generalization", direction: "outgoing" });
+    const data = res.json();
+    expect(data.connectors).toHaveLength(1);
+    expect(data.connectors[0].source.role).toBe("child");
+    expect(data.connectors[0].dest.role).toBe("parent");
+  });
+
+  it("carries no role field on non-Generalization connectors", async () => {
+    const res = await callTool("ea_get_connectors", { elementId: 2, connectorType: "Association" });
+    const data = res.json();
+    expect(data.connectors[0].source.role).toBeUndefined();
+    expect(data.connectors[0].dest.role).toBeUndefined();
   });
 
   it("includes source and dest element details", async () => {
@@ -592,7 +632,15 @@ describe("ea_get_diagram_elements", () => {
     expect(data.diagram.name).toBe("UC Správa zmlúv");
     expect(data.diagram.type).toBe("Use Case");
     expect(data.diagram.packageName).toBe("Use Cases");
-    expect(data.elements).toHaveLength(3);
+    expect(data.elements).toHaveLength(4);
+  });
+
+  it("includes free-text Note diagram objects with decoded notes (U2)", async () => {
+    const res = await callTool("ea_get_diagram_elements", { diagramId: 1 });
+    const data = res.json();
+    const legend = data.elements.find((e: any) => e.Object_Type === "Note");
+    expect(legend).toBeDefined();
+    expect(legend.Note).toBe("Legenda: CP = potvrdené áno, NP = nepotvrdené");
   });
 
   it("preserves element ordering by Sequence", async () => {
@@ -601,6 +649,7 @@ describe("ea_get_diagram_elements", () => {
     expect(data.elements[0].Object_ID).toBe(1);
     expect(data.elements[1].Object_ID).toBe(2);
     expect(data.elements[2].Object_ID).toBe(3);
+    expect(data.elements[3].Object_ID).toBe(12);
   });
 
   it("returns connectors on diagram including explicit links", async () => {

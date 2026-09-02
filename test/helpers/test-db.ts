@@ -84,6 +84,9 @@ export function createTestDb(): TestDb {
     "Presný názov pre prioritu resolve", "Approved", "admin", "{OBJ-0010}");
   insertObj.run(11, "UseCase", "UC_ABC_2079: Spracovanie žiadosti", null, null, 6,
     "Prefixový názov pre prioritu resolve", "Approved", "admin", "{OBJ-0011}");
+  // Free-text diagram Note object, entity-encoded (U2 test shape)
+  insertObj.run(12, "Note", "Legenda", null, null, 4,
+    "Legenda: CP = potvrden&#233; &#225;no, NP = nepotvrden&#233;", null, "admin", "{OBJ-0012}");
 
   // --- Seed attributes with ea_guid (for R1 feature link resolution) ---
   const insertAttr = db.prepare(
@@ -102,12 +105,16 @@ export function createTestDb(): TestDb {
   );
   insertOp.run(1, 2, "getFullName", "String", "Public", null, "Returns full name", 0, "{OP-0001}");
   insertOp.run(2, 2, "setMeno", "void", "Public", null, null, 1, "{OP-0002}");
+  // Operation with entity-encoded notes (U1 test shape)
+  insertOp.run(3, 6, "getNázov", "String", "Public", null, "N&#225;zov pr&#225;vnickej osoby", 0, "{OP-0003}");
 
   // --- Seed operation params ---
   const insertParam = db.prepare(
     "INSERT INTO t_operationparams (OperationID, Name, Type, Kind, Notes, Pos) VALUES (?, ?, ?, ?, ?, ?)"
   );
   insertParam.run(2, "meno", "String", "in", "Nové meno", 0);
+  // Param with entity-encoded notes (U1 test shape)
+  insertParam.run(3, "id", "Integer", "in", "Identifik&#225;tor z&#225;znamu", 0);
 
   // --- Seed connectors with StyleEx and roles ---
   const insertConn = db.prepare(
@@ -131,6 +138,9 @@ export function createTestDb(): TestDb {
   // Connector for feature link to operation
   insertConn.run(5, "Dependency", null, null, "Source -> Destination", null, null, null, null, 2, 6,
     null, null, "LFSP={OP-0001}L;");
+  // Generalization: PRÁVNICKÁ OSOBA (6, child) extends Osoba (5, parent) — U3 test shape
+  insertConn.run(6, "Generalization", null, null, "Source -> Destination", null, null, null, null, 6, 5,
+    null, null, null);
 
   // --- Seed diagrams (including duplicate name) ---
   db.prepare(
@@ -147,6 +157,7 @@ export function createTestDb(): TestDb {
   insertDiagObj.run(1, 1, 1); // Správa zmlúv
   insertDiagObj.run(1, 2, 2); // Zmluvná strana
   insertDiagObj.run(1, 3, 3); // Zoznam zmlúv
+  insertDiagObj.run(1, 12, 4); // Legenda (Note)
   insertDiagObj.run(2, 6, 1); // PRÁVNICKÁ OSOBA
   insertDiagObj.run(2, 7, 2); // Osoba (in Architektúra)
 
