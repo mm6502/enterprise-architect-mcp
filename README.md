@@ -148,8 +148,9 @@ read a large set; advancing `offset` is.
 
 When far more rows match than one window could hold, the response also carries a `breakdown` of how
 they distribute. Its keys are parameter names and its values are argument values, so a breakdown is
-a prompt to narrow — by `objectType`, `stereotype`, or `diagramType` — rather than to page through
-thousands of rows.
+a prompt to narrow — by `objectType`, `stereotype`, `diagramType`, or, for `ea_search` when the
+result isn't already scoped, by `packageScope` (reported as the matching package's id, which the
+next call can pass straight back) — rather than to page through thousands of rows.
 
 ### Naming the path up front
 
@@ -180,12 +181,12 @@ hand; answering the prompt once is what makes that unnecessary.
 
 | Tool | Description |
 |------|-------------|
-| `ea_search` | Full-text search across elements, attributes, operations, and constraints. Case- and diacritic-insensitive across European Latin alphabets, decodes entity-encoded text. |
+| `ea_search` | Full-text search across elements, attributes, operations, and constraints. Case- and diacritic-insensitive across European Latin alphabets, decodes entity-encoded text. Each result carries the evidence for its match — the field, the attribute or operation it came from, and a snippet of the author's own text. Accepts a `packageScope` (package id or name) to restrict results to a package and its descendants, and reports a package breakdown axis when unscoped. |
 | `ea_get_element` | Full element detail — attributes, operations, diagrams it appears on, constraints (pre/post/invariant/process). Flags whether attribute multiplicity is contrastive. |
 | `ea_list_elements` | List elements in a package, optionally filtered by type. Windowed: reports the total and pages with `offset`. |
 | `ea_get_connectors` | Relationships for an element — includes feature-link resolution (which attribute/operation each end attaches to). |
 | `ea_get_diagram_elements` | Elements and connectors on a diagram, including implied connectors and feature links. |
-| `ea_get_scenarios` | Use case scenario steps with all attributes (trigger, uses, result, link, state) and scenario notes. |
+| `ea_get_scenarios` | Use case scenario steps with all attributes (trigger, uses, result, link, state) and scenario notes. A step's `uses` may name a business rule or constraint by code — that code isn't independently searchable, it's retrieved via `ea_get_element` on the same element. |
 | `ea_get_package_tree` | Navigate the package hierarchy with recursive depth. |
 | `ea_list_diagrams` | Search diagrams by name, type and package. Windowed like the tools above. |
 | `ea_resolve` | Resolve analyst references (braced GUID or plain name) to model candidates with full package path. Falls back to name-prefix matching for analyst codes; every candidate carries a `match` of `guid`, `exact`, or `prefix`. |

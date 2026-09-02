@@ -48,7 +48,8 @@
     "watch": "tsc --watch",
     "test": "jest",
     "eval:run": "tsx eval/runner.ts",
-    "eval:model": "tsx eval/build-model.ts"
+    "eval:model": "tsx eval/build-model.ts",
+    "eval:agent": "tsx eval/agent-runner-cli.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

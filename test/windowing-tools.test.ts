@@ -17,6 +17,7 @@ let testDb: TestDb;
 
 const PAGING_PACKAGE = 7;
 const UNIFORM_PACKAGE = 8;
+const SCOPE_PACKAGE = 9;
 const BULK_TYPES = ["Class", "UseCase", "Screen"];
 const DIAGRAM_TYPES = ["Logical", "Use Case", "Sequence"];
 
@@ -33,6 +34,9 @@ beforeAll(async () => {
   db.prepare("INSERT INTO t_package (Package_ID, Name, Parent_ID, ea_guid, TPos) VALUES (?, ?, ?, ?, ?)")
     .run(UNIFORM_PACKAGE, "Uniform", 1, "{PKG-0008}", 3);
 
+  db.prepare("INSERT INTO t_package (Package_ID, Name, Parent_ID, ea_guid, TPos) VALUES (?, ?, ?, ?, ?)")
+    .run(SCOPE_PACKAGE, "Scope target", 1, "{PKG-0009}", 4);
+
   const insertObj = db.prepare(
     `INSERT INTO t_object (Object_ID, Object_Type, Name, Alias, Stereotype, Package_ID, Note, Status, Author, ea_guid)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -48,6 +52,12 @@ beforeAll(async () => {
   for (let i = 0; i < 12; i++) {
     const id = 1200 + i;
     insertObj.run(id, "Class", `Uniform element ${i}`, null, null, UNIFORM_PACKAGE, null, "Approved", "admin", `{UNI-${id}}`);
+  }
+
+  // Split evenly across two packages, so the package breakdown axis has something to report.
+  for (let i = 0; i < 6; i++) {
+    insertObj.run(1300 + i, "Class", `Scopeterm A${i}`, null, null, PAGING_PACKAGE, null, "Approved", "admin", `{SCOPE-A-${1300 + i}}`);
+    insertObj.run(1310 + i, "Class", `Scopeterm B${i}`, null, null, SCOPE_PACKAGE, null, "Approved", "admin", `{SCOPE-B-${1310 + i}}`);
   }
 
   for (let i = 0; i < 57; i++) {
@@ -342,6 +352,26 @@ describe("ea_search relevance ladder", () => {
       expect(body.breakdown).toBeUndefined();
       expect(body.continuation).toBeUndefined();
     }
+  });
+
+  it("reports a package axis whose values narrow with packageScope", async () => {
+    const body = await call("ea_search", { query: "scopeterm", limit: 1 });
+    expect(body.totalMatched).toBe(12);
+
+    const axis = body.breakdown.packageScope;
+    const summed = axis.values.reduce((n: number, v: any) => n + v.count, 0);
+    expect(summed).toBe(body.totalMatched);
+
+    for (const { value, count } of axis.values) {
+      const narrowed = await call("ea_search", { query: "scopeterm", packageScope: Number(value), limit: 1 });
+      expect(narrowed.totalMatched).toBe(count);
+    }
+  });
+
+  it("omits the packageScope axis once a scope is already given", async () => {
+    const body = await call("ea_search", { query: "scopeterm", packageScope: SCOPE_PACKAGE, limit: 1 });
+    expect(body.totalMatched).toBe(6);
+    expect(body.breakdown?.packageScope).toBeUndefined();
   });
 
   it("refuses a window that could never advance", async () => {

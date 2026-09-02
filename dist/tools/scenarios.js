@@ -38,7 +38,7 @@ const SCENARIO_TYPE_ORDER = {
     "Exception": 2,
 };
 export function configureScenarioTools(server, model) {
-    server.tool("ea_get_scenarios", "Get use case scenario flows for an element. `scenarios` holds the parsed flows; each has `name`, `type`, `notes`, and `steps`, and each step carries `stepNumber` plus its attributes (`trigger`, `uses`, `result`, `state`, `link`). Steps are numbered within each scenario. Scenarios ordered by type: Basic Path first, then Alternate, then Exception.", {
+    server.tool("ea_get_scenarios", "Get use case scenario flows for an element. `scenarios` holds the parsed flows; each has `name`, `type`, `notes`, and `steps`, and each step carries `stepNumber` plus its attributes (`trigger`, `uses`, `result`, `state`, `link`). Steps are numbered within each scenario. Scenarios ordered by type: Basic Path first, then Alternate, then Exception. A step's `uses` may name a business rule or constraint by code; that code is not independently searchable or resolvable — look it up among this same elementId's own constraints via `ea_get_element`, not by a separate lookup.", {
         elementId: z.coerce.number().describe("The Object_ID of the element (typically a UseCase) to get scenarios for"),
     }, READ_ONLY, async ({ elementId }) => {
         const db = await model.database();

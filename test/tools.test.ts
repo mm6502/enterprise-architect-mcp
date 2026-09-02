@@ -133,6 +133,56 @@ describe("ea_search", () => {
     expect(req.NotePreview.length).toBe(200);
   });
 
+  it("names the field and the attribute that produced the match", async () => {
+    const res = await callTool("ea_search", { query: "právnickej" });
+    const data = res.json();
+    const elem = data.results.find((e: any) => e.Object_ID === 6);
+    expect(elem).toBeDefined();
+    expect(elem.matches[0].matchedIn).toBe("t_attribute.Notes");
+    expect(elem.matches[0].sourceId).toBe(4);
+    expect(elem.matches[0].sourceName).toBe("názov");
+  });
+
+  it("quotes the author's text rather than the folded form used for matching", async () => {
+    const res = await callTool("ea_search", { query: "pravnickej" });
+    const data = res.json();
+    const elem = data.results.find((e: any) => e.Object_ID === 6);
+    expect(elem.matches[0].snippet).toBe("Názov právnickej osoby");
+    expect(elem.matches[0].snippetTruncated).toBe(false);
+  });
+
+  it("orders evidence by the same ladder as the results, and caps it", async () => {
+    const res = await callTool("ea_search", { query: "a", limit: 100 });
+    const data = res.json();
+    const elem = data.results.find((e: any) => e.Object_ID === 2);
+    expect(elem.matches.map((m: any) => m.matchedIn)).toEqual([
+      "t_object.Name",
+      "t_object.Note",
+      "t_attribute.Name",
+    ]);
+    expect(elem._meta.matches.returned).toBe(3);
+    expect(elem._meta.matches.totalMatched).toBeGreaterThan(3);
+    expect(elem._meta.matches.truncated).toBe(true);
+  });
+
+  it("reports evidence for an element matched only on its own name", async () => {
+    const res = await callTool("ea_search", { query: "Zoznam zmlúv" });
+    const data = res.json();
+    const elem = data.results.find((e: any) => e.Object_ID === 3);
+    expect(elem.matches).toHaveLength(1);
+    expect(elem.matches[0].snippet).toBe("Zoznam zmlúv");
+    expect(elem._meta.matches).toEqual({ totalMatched: 1, returned: 1, truncated: false });
+  });
+
+  it("centres NotePreview on the match when the element's own note is what matched", async () => {
+    const res = await callTool("ea_search", { query: "preddavku" });
+    const data = res.json();
+    const req = data.results.find((e: any) => e.Object_ID === 8);
+    expect(req.matchedIn).toBe("t_object.Note");
+    expect(req.NotePreview).toContain("preddavku");
+    expect(req.NotePreview.startsWith("…")).toBe(true);
+  });
+
   it("reports totalMatched and continuation when capped", async () => {
     const res = await callTool("ea_search", { query: "a", limit: 2 });
     const data = res.json();
@@ -148,6 +198,68 @@ describe("ea_search", () => {
     const res = await callTool("ea_search", { query: "právnickej osoby" });
     const data = res.json();
     expect(data.results.length).toBeGreaterThan(0);
+  });
+
+  // Guards the defect where match evidence shipped without the description announcing it —
+  // the description-contract harness only reaches top-level fields, not nested ones like `matches`.
+  it("documents match evidence and note-preview centring, and both appear in a real response", async () => {
+    const { tools } = await client.listTools();
+    const description = tools.find((t) => t.name === "ea_search")?.description ?? "";
+    expect(description).toMatch(/matches/);
+    expect(description).toMatch(/snippet/);
+    expect(description).toMatch(/centre/);
+
+    const res = await callTool("ea_search", { query: "právnickej osoby" });
+    const data = res.json();
+    const elem = data.results[0];
+    expect(elem.matches[0]).toEqual(
+      expect.objectContaining({ matchedIn: expect.any(String), snippet: expect.any(String) })
+    );
+    expect(elem._meta.matches).toEqual(
+      expect.objectContaining({ totalMatched: expect.any(Number), returned: expect.any(Number), truncated: expect.any(Boolean) })
+    );
+  });
+
+  it("restricts results to a package and its descendants", async () => {
+    // "osoba" matches objects 5 (pkg 2), 6 (pkg 3) and 7 (pkg 5) unscoped.
+    const unscoped = await callTool("ea_search", { query: "osoba" });
+    expect(unscoped.json().totalMatched).toBe(3);
+
+    // Package 4's subtree is {4, 5, 6} — only object 7 (pkg 5) qualifies.
+    const scoped = await callTool("ea_search", { query: "osoba", packageScope: 4 });
+    const data = scoped.json();
+    expect(data.totalMatched).toBe(1);
+    expect(data.results[0].Object_ID).toBe(7);
+  });
+
+  it("resolves a package scope given by name", async () => {
+    // Package 6, "Resolve fixtures", holds only objects 9-11.
+    const res = await callTool("ea_search", { query: "resolve", packageScope: "Resolve fixtures" });
+    const data = res.json();
+    expect(data.totalMatched).toBe(2);
+    expect(data.results.map((r: any) => r.Object_ID).sort()).toEqual([10, 11]);
+  });
+
+  it("reports an ambiguous package name rather than guessing", async () => {
+    // "Use Cases" names both package 3 and package 5.
+    const res = await callTool("ea_search", { query: "osoba", packageScope: "Use Cases" });
+    expect(res.isError).toBe(true);
+    const data = res.json();
+    expect(data.error).toBe("ambiguous_package");
+    expect(data.candidates).toHaveLength(2);
+  });
+
+  it("reports a missing package scope as a structured error", async () => {
+    const res = await callTool("ea_search", { query: "osoba", packageScope: 9999 });
+    expect(res.isError).toBe(true);
+    expect(res.json().error).toBe("not_found");
+  });
+
+  it("carries the package scope through continuation", async () => {
+    const res = await callTool("ea_search", { query: "resolve", packageScope: 6, limit: 1 });
+    const data = res.json();
+    expect(data.truncated).toBe(true);
+    expect(data.continuation.arguments.packageScope).toBe(6);
   });
 });
 

@@ -73,9 +73,11 @@ export function createTestDb(): TestDb {
   // Duplicate element name in different package
   insertObj.run(7, "Class", "Osoba", null, "Entity", 5,
     "Osoba v architektúre", "Approved", "admin", "{OBJ-0007}");
-  // Element with a long note for preview truncation testing
+  // Element with a long note whose distinctive term sits past the preview window
   insertObj.run(8, "Requirement", "Požiadavka na výpis", null, null, 3,
-    "A".repeat(300), "Proposed", "admin", "{OBJ-0008}");
+    "Systém eviduje podanie a jeho spracovanie v lehote určenej predpisom. ".repeat(3) +
+    "Osobitné ustanovenie o preddavku sa uplatní až po uplynutí lehoty.",
+    "Proposed", "admin", "{OBJ-0008}");
   insertObj.run(9, "Class", "OA_ABC_2280: Vstupné parametre", null, null, 6,
     "Vstupné parametre pre obrazovku", "Approved", "admin", "{OBJ-0009}");
   insertObj.run(10, "UseCase", "UC_ABC_2079", null, null, 6,
