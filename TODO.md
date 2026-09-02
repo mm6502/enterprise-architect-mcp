@@ -22,11 +22,15 @@
   and not a reasoning-effort issue. Likely the same root cause behind `gpt-5-mini`'s identical
   "supplier registry" fabrication on B1 — same dead-end shape, not separately confirmed.
 
-  **Candidate fix, untested:** add a line to `ea_get_scenarios`'s description (or the step's
-  `uses` field) stating that a step's referenced rule/constraint code is not independently
-  searchable — it lives among the *same element's* own `constraints`, retrieved via
-  `ea_get_element`. Cheap to validate: change the description, rebuild, rerun the same 3 B4 reps
-  for claude and check whether it now calls `ea_get_element(101)`.
+  **Fixed and verified 2026-09-02.** Added one sentence to `ea_get_scenarios`'s description
+  (`src/tools/scenarios.ts`): a step's `uses` may name a rule by code, and that code is not
+  independently searchable — look it up via `ea_get_element` on the same elementId instead.
+  Rebuilt, reran the same 3 B4 reps for `claude-sonnet-5`: **3/3 now correct** (up from 0/10
+  before the fix), all three calling `ea_get_element(101)` and correctly stating the rule text.
+  One transcript explicitly credited the new description: *"PRAV_OBS_8501 is a constraint
+  embedded in UC_4101, not a separate searchable element (as the tool description warned)."`
+  `npm test` still 338/338. Not re-run as a full campaign (n=3 spot-check only, per the same
+  noise-floor caveat as U9's own measurement — treat as a strong signal, not a proven rate).
 
 - Bug: `ea_get_element`'s `attributes[].notes`, `operations[].notes` and
   `operations[].parameters[].notes` return raw, undecoded HTML entities (e.g. literal `&#225;`
