@@ -32,6 +32,13 @@
   `npm test` still 338/338. Not re-run as a full campaign (n=3 spot-check only, per the same
   noise-floor caveat as U9's own measurement — treat as a strong signal, not a proven rate).
 
+  **Confirmed to generalize, same day.** Reran B1 with `gpt-5-mini` (the model that fabricated
+  the "supplier registry" rule earlier) against the fixed build: **3/3 correct**, up from its
+  earlier hallucination. Its `ea_resolve("UC_OBS_4101")` still lands on the decoy (id 103) as
+  expected, but it now recovers by calling `ea_get_element(101)` afterward instead of fabricating
+  from the decoy's alternate-path text. Confirms the root cause and the fix are general, not
+  claude-specific.
+
 - Bug: `ea_get_element`'s `attributes[].notes`, `operations[].notes` and
   `operations[].parameters[].notes` return raw, undecoded HTML entities (e.g. literal `&#225;`
   instead of `á`) — `src/tools/elements.ts` builds these from `a.Notes`/`op.Notes`/`p.Notes`
