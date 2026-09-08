@@ -87,6 +87,15 @@ export function createTestDb(): TestDb {
   // Free-text diagram Note object, entity-encoded (U2 test shape)
   insertObj.run(12, "Note", "Legenda", null, null, 4,
     "Legenda: CP = potvrden&#233; &#225;no, NP = nepotvrden&#233;", null, "admin", "{OBJ-0012}");
+  // Multi-term ranking shapes (U12/R7-R10): terms adjacent in supplied order (phrase-grade)...
+  insertObj.run(13, "UseCase", "Vydanie povolenia", null, null, 2,
+    null, "Approved", "admin", "{OBJ-0013}");
+  // ...vs. the same two terms both present, each at its own word boundary, but not adjacent...
+  insertObj.run(14, "UseCase", "Vydanie žiadosti o predĺžení povolenia", null, null, 2,
+    null, "Approved", "admin", "{OBJ-0014}");
+  // ...vs. one term present only mid-word (no word boundary at all).
+  insertObj.run(15, "UseCase", "Odvydanie s povolenkou", null, null, 2,
+    null, "Approved", "admin", "{OBJ-0015}");
 
   // --- Seed attributes with ea_guid (for R1 feature link resolution) ---
   const insertAttr = db.prepare(

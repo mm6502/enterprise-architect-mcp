@@ -307,6 +307,22 @@ describe("ea_search", () => {
     const res = await callTool("ea_search", { requiredTerms: "osoba" });
     expect(res.isError).toBe(true);
   });
+
+  // ─── U12: cross-field rank tier and ladder generalisation (R7, R8, R9, R10) ───
+
+  it("ranks a phrase-grade match above a word-boundary-only match above a mid-word match (R7, R8, R9)", async () => {
+    // 13 "Vydanie povolenia": terms adjacent in supplied order — phrase-grade.
+    // 14 "Vydanie žiadosti o predĺžení povolenia": both terms present, each at its own word
+    //    boundary (R7 holds for every term), but not adjacent — no phrase-grade promotion.
+    // 15 "Odvydanie s povolenkou": "vydanie" occurs only mid-word (inside "Odvydanie") — R7 fails.
+    const res = await callTool("ea_search", { requiredTerms: ["vydanie", "povolen"] });
+    const data = res.json();
+    expect(data.totalMatched).toBe(3);
+    expect(data.results.map((r: any) => r.Object_ID)).toEqual([13, 14, 15]);
+    // Every winning match is a single field (t_object.Name), so R9's guarantee holds
+    // even though the rank within that field differs term-adjacency to term-adjacency.
+    expect(data.results.every((r: any) => r.matchedIn === "t_object.Name")).toBe(true);
+  });
 });
 
 // ─── ea_get_element ───

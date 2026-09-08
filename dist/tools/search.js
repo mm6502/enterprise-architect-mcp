@@ -49,10 +49,16 @@ function excerptAround(original, folded, foldedQuery, budget) {
     const tail = hi < words.length - 1 ? "…" : "";
     return { text: head + original.slice(words[lo][0], words[hi][1]) + tail, truncated: head !== "" || tail !== "" };
 }
-/** True when the query begins somewhere other than mid-word. */
+/**
+ * True when the query begins somewhere other than mid-word — including at the very start of
+ * the text. Single-term ranking never reaches this for a position-0 match (rank 1, `startsWith`,
+ * already wins first), so widening it to treat idx 0 as a boundary is safe there; it matters
+ * once several terms are checked independently (R7), where an earlier term's own position-0
+ * match must not be misread as failing the boundary test.
+ */
 function startsAtWordBoundary(text, query) {
-    for (let idx = text.indexOf(query); idx > 0; idx = text.indexOf(query, idx + 1)) {
-        if (!/[\p{L}\p{N}]/u.test(text[idx - 1]))
+    for (let idx = text.indexOf(query); idx >= 0; idx = text.indexOf(query, idx + 1)) {
+        if (idx === 0 || !/[\p{L}\p{N}]/u.test(text[idx - 1]))
             return true;
     }
     return false;
@@ -90,25 +96,68 @@ function scoreMatch(entry, foldedQuery) {
 /** Below every single-field ladder rank (0-10), so R1's cross-field match never outranks one. */
 const SPREAD_RANK = 11;
 /**
+ * Whether every supplied term occurs in `text`, each immediately after the previous one save
+ * for a run of non-alphanumeric characters — i.e. adjacent in the caller's own order (R8).
+ * Meaningless for a single term (there is nothing to be adjacent to), so it is always false
+ * then, which is what keeps this out of the single-term path entirely.
+ */
+function isPhraseGrade(text, foldedTerms) {
+    if (foldedTerms.length < 2)
+        return false;
+    const escaped = foldedTerms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    return new RegExp(escaped.join("[^\\p{L}\\p{N}]*"), "u").test(text);
+}
+/**
+ * How far apart several required terms sit in the text that carried all of them — the span
+ * from the first term's start to the last term's end. Smaller is more proximate (R10). Always
+ * 0 for a single term, so it never perturbs the single-term freeze (R3): every candidate ties
+ * at 0 and the comparison falls straight through to the next tiebreak, exactly as it does today.
+ */
+function termProximity(text, foldedTerms) {
+    if (foldedTerms.length < 2)
+        return 0;
+    let start = Infinity;
+    let end = -Infinity;
+    for (const t of foldedTerms) {
+        const at = text.indexOf(t);
+        if (at < 0)
+            continue;
+        start = Math.min(start, at);
+        end = Math.max(end, at + t.length);
+    }
+    return start === Infinity ? 0 : end - start;
+}
+/**
  * Generalises scoreMatch to several required terms, reducing exactly to it for one term —
  * that identity is what lets R3's freeze hold by construction rather than by a parallel code
- * path. Exact/prefix/word-boundary distinctions (ranks 0-2) lose their meaning once more than
- * one term is involved, so a multi-term single-field t_object.Name match settles at the
- * ladder's infix rank (3); every other bucket depends only on (sourceTable, sourceField), so
- * it is unaffected by term count. Coverage becomes the summed term length over the text
- * length, capped at 1 — how this should really work for a multi-term match is an open
- * question (see Outstanding Questions), and this is a placeholder, not a final answer.
+ * path. Exact and prefix (ranks 0-1) stay single-term concepts: neither has a natural meaning
+ * once more than one distinct required term is involved. Word-boundary (rank 2) generalises
+ * cleanly instead (R7): it holds only when every term independently starts at a boundary,
+ * otherwise the match settles at the ladder's infix rank (3). Every other bucket depends only
+ * on (sourceTable, sourceField), so it is unaffected by term count. A phrase-grade match (R8)
+ * then promotes half a rank within whichever bucket it already landed in — never crossing into
+ * a neighbouring field's territory, which is what keeps R9's resolvable-to-one-field guarantee
+ * intact. Coverage becomes the summed term length over the text length, capped at 1 — how this
+ * should really work for a multi-term match is an open question (see Outstanding Questions),
+ * and this is a placeholder, not a final answer.
  */
 function scoreMultiMatch(entry, foldedTerms) {
     if (foldedTerms.length === 1)
-        return scoreMatch(entry, foldedTerms[0]);
-    const base = scoreMatch(entry, foldedTerms[0]);
+        return { ...scoreMatch(entry, foldedTerms[0]), proximity: 0 };
     const text = entry.foldedText;
     const coverage = text.length > 0
         ? Math.min(1, foldedTerms.reduce((sum, t) => sum + t.length, 0) / text.length)
         : 0;
-    const rank = entry.sourceTable === "t_object" && entry.sourceField === "Name" ? 3 : base.rank;
-    return { rank, coverage };
+    let rank;
+    if (entry.sourceTable === "t_object" && entry.sourceField === "Name") {
+        rank = foldedTerms.every((t) => startsAtWordBoundary(text, t)) ? 2 : 3;
+    }
+    else {
+        rank = scoreMatch(entry, foldedTerms[0]).rank;
+    }
+    if (isPhraseGrade(text, foldedTerms))
+        rank -= 0.5;
+    return { rank, coverage, proximity: termProximity(text, foldedTerms) };
 }
 /**
  * Whether every required term occurs somewhere in this object's searchable text (R1), and how
@@ -116,7 +165,8 @@ function scoreMultiMatch(entry, foldedTerms) {
  * whose terms are only found spread across separate entries still matches, but ranks below
  * every single-field tier — R1's "ranking preference, not a condition of matching". Reduces
  * to today's single-term matching and ranking exactly when only one term is supplied, since
- * every entry containing that one term trivially "carries every term".
+ * every entry containing that one term trivially "carries every term", and proximity is always
+ * 0 for one term (see termProximity), so the R10/R11 tiebreak this adds is a no-op there too.
  */
 function matchObject(objEntries, foldedTerms) {
     for (const term of foldedTerms) {
@@ -127,15 +177,16 @@ function matchObject(objEntries, foldedTerms) {
     for (const e of objEntries) {
         if (!foldedTerms.every((t) => e.foldedText.includes(t)))
             continue;
-        const { rank, coverage } = scoreMultiMatch(e, foldedTerms);
+        const { rank, coverage, proximity } = scoreMultiMatch(e, foldedTerms);
         if (!best || rank < best.rank || (rank === best.rank && coverage > best.coverage)) {
-            best = { rank, coverage, matchedIn: `${e.sourceTable}.${e.sourceField}` };
+            best = { rank, coverage, proximity, matchedIn: `${e.sourceTable}.${e.sourceField}` };
         }
     }
     if (best)
         return best;
     // Spread: no single entry carries every term. Coverage is the average of each term's own
     // best-entry coverage — like the rank placeholder above, an interim answer, not a final one.
+    // Proximity has no shared text to measure across separate entries, so it stays neutral (0).
     let coverageSum = 0;
     for (const term of foldedTerms) {
         let bestCoverage = 0;
@@ -148,7 +199,7 @@ function matchObject(objEntries, foldedTerms) {
         }
         coverageSum += bestCoverage;
     }
-    return { rank: SPREAD_RANK, coverage: coverageSum / foldedTerms.length, matchedIn: null };
+    return { rank: SPREAD_RANK, coverage: coverageSum / foldedTerms.length, proximity: 0, matchedIn: null };
 }
 function buildCorpus(db) {
     const cached = corpora.get(db);
@@ -241,7 +292,7 @@ function collectEvidence(db, entries, rows, windowIds, foldedTerms) {
             const present = foldedTerms.filter((t) => e.foldedText.includes(t));
             return { e, present, ...scoreMultiMatch(e, present) };
         })
-            .sort((a, b) => a.rank - b.rank || b.coverage - a.coverage || a.e.sourceId - b.e.sourceId)
+            .sort((a, b) => a.rank - b.rank || b.coverage - a.coverage || a.proximity - b.proximity || a.e.sourceId - b.e.sourceId)
             .slice(0, MAX_INLINE_MATCHES)
             .map((r) => ({ entry: r.e, term: r.present[0] }));
         kept.set(objectId, { entries: ranked, totalMatched: list.length });
@@ -385,9 +436,11 @@ export function configureSearchTools(server, model) {
                 };
             }
             // Strongest first, then identity: without the final tiebreak, paging a large
-            // tie could show the same row twice and never show another.
+            // tie could show the same row twice and never show another. Proximity (R10) sits
+            // between coverage and identity, per R11 — a no-op for a single required term, since
+            // matchObject always reports proximity 0 there.
             const sortedIds = [...matchMap.entries()]
-                .sort((a, b) => a[1].rank - b[1].rank || b[1].coverage - a[1].coverage || a[0] - b[0])
+                .sort((a, b) => a[1].rank - b[1].rank || b[1].coverage - a[1].coverage || a[1].proximity - b[1].proximity || a[0] - b[0])
                 .map(([id]) => id);
             // Build SQL to fetch matched elements with filters
             let filterClauses = "";
