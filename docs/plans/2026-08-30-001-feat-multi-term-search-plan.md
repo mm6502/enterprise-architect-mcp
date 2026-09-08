@@ -117,20 +117,29 @@ Stage 1 was written as a spike before this plan carried an implementation sectio
 
 ```mermaid
 flowchart TB
-  Q[Folded query entries, optional alternatives] --> S[Scan corpus entries]
-  S --> C{Does this element carry every entry as a substring, and at least one alternative?}
+  Q[Folded required-term entries] --> S[Scan corpus entries]
+  S --> C{Every required entry a substring in this element?}
   C -->|no| X[Not a match]
-  C -->|yes| F{Did one field carry them all?}
-  F -->|yes| L[Field-priority ladder, every term must clear the word-boundary test]
+  C -->|yes| T{Which tool?}
+  T -->|ea_search_all_of, alternatives supplied| N{At least one alternative also present?}
+  N -->|no| X
+  N -->|yes| F
+  T -->|ea_search| F{Did one field carry every required term?}
+  F -->|yes| L[Field-priority ladder, every required term must clear the word-boundary test]
   F -->|no| D[Spread-across-fields tier, below any single-field match]
-  D --> O
+  D --> A
   L --> A{Terms in supplied order, separated only by non-alphanumerics?}
   A -->|yes| P[Promote to phrase grade, keeping the rank resolvable to one field]
   A -->|no| K[Keep ladder rank]
-  P --> O[Order: rank, coverage, term proximity, then model identity]
-  K --> O
+  P --> RK
+  K --> RK{ea_search with alternatives supplied: does one also match?}
+  RK -->|yes| PR[Promote rank one tier; never excludes, never applies to ea_search_all_of]
+  RK -->|no| O
+  PR --> O[Order: rank, coverage, term proximity, then model identity]
   O --> M[matchedIn names the winning field for single-field matches; spread matches report per-field evidence per R13]
 ```
+
+Alternatives diverge into two independently-invoked behaviours after the required-term match, per R4: `ea_search_all_of` folds the alternatives check into the match test itself (`N`), so a missing alternative excludes the element before ranking ever runs; `ea_search` runs every required-term match through the normal ladder and only afterwards promotes one rank tier for an element that also happens to satisfy an alternative (`RK`→`PR`), never excluding on that basis. A call to either tool only ever exercises one of these two branches, never both.
 
 ### Acceptance Examples
 
@@ -152,11 +161,17 @@ flowchart TB
   - **When** each runs against the multi-term implementation as a one-entry list.
   - **Then** the returned elements and their order are identical to the current results.
 
-- AE4. The disjunctive leg narrows rather than widens.
+- AE4. The disjunctive leg narrows rather than widens, on `ea_search_all_of`.
   - **Covers R4.**
   - **Given** a coded type family, where short codes `CP`, `NP` and `GR` qualify the shared noun `pohľadávka` and each code sits alongside that noun in a single attribute note.
-  - **When** the caller requires `pohľadáv` and offers `CP` and `NP` as alternatives.
+  - **When** the caller calls `ea_search_all_of`, requiring `pohľadáv` and offering `CP` and `NP` as alternatives.
   - **Then** the `CP` and `NP` elements are returned and the `GR` one is not.
+
+- AE4a. The disjunctive leg reorders rather than narrows, on `ea_search`.
+  - **Covers R4.**
+  - **Given** the same coded type family as AE4 — `CP`, `NP` and `GR` qualifying `pohľadávka` — plus a fourth element carrying `pohľadáv` alone, with none of the three codes.
+  - **When** the caller calls `ea_search`, requiring `pohľadáv` and offering `CP` and `NP` as alternatives.
+  - **Then** all four elements are returned, including the `GR` one and the code-free one; the `CP` and `NP` elements rank above the other two, which tie with each other exactly as they would with no alternatives supplied.
 
 - AE5. A multi-word entry and a single-word entry together narrow the result.
   - **Covers R2.**
