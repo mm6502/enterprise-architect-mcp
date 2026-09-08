@@ -308,7 +308,7 @@ Stage 2 adds a filter and a breakdown axis over `Package_ID`, which every corpus
 
 ### Sequencing
 
-U10 comes first — without it every stage's measurement is a manual campaign, which is what made KD12's staging expensive. U1 → U2 → U3 → U4 within Stage 1; U5's baseline half runs before U1 merges and its comparison half after U4. U6 closes the stage. Stage 2's U7 → U8 → U9 begins only after Stage 1 is released, so its baseline is Stage 1's released behaviour. Stage 3 is not planned here.
+U10 comes first — without it every stage's measurement is a manual campaign, which is what made KD12's staging expensive. U1 → U2 → U3 → U4 within Stage 1; U5's baseline half runs before U1 merges and its comparison half after U4. U6 closes the stage. Stage 2's U7 → U8 → U9 begins only after Stage 1 is released, so its baseline is Stage 1's released behaviour. **Stage 3, planned 2026-09-08**: U11 (the `requiredTerms` conjunction) begins only after Stage 2 is released, so its baseline is Stage 2's released behaviour per KD12/KTD5 — the same rule that ordered Stage 2 after Stage 1. U12 and U13 both depend only on U11 and can proceed in either order once it lands. U14 (the two alternative-terms tools) needs both — the ranking tier U12 adds and the term cap/diagnostic U13 adds are part of the surface `boostAnyOf` and `andAnyOf` sit on. U15 closes the fixture the way U4 closed Stage 1's, and U16 closes the stage the way U9 closed Stage 2's.
 
 ---
 
@@ -328,6 +328,12 @@ Listed in execution order, which is not U-ID order — U10 was added last but ru
 | U7 | Package scope | [src/tools/search.ts](src/tools/search.ts), [src/package-path.ts](src/package-path.ts) | U6 |
 | U8 | Package breakdown axis | [src/tools/search.ts](src/tools/search.ts), [src/tools/windowing.ts](src/tools/windowing.ts), [README.md](README.md) | U7 |
 | U9 | Stage 2 measurement and release | [eval/agent-tasks.md](eval/agent-tasks.md), [README.md](README.md) | U7, U8 |
+| U11 | `requiredTerms` conjunction | [src/tools/search.ts](src/tools/search.ts), [test/tools.test.ts](test/tools.test.ts) | Stage 2 released |
+| U12 | Cross-field rank tier and ladder generalisation | [src/tools/search.ts](src/tools/search.ts), [test/tools.test.ts](test/tools.test.ts) | U11 |
+| U13 | Term cap and per-term empty-result diagnostic | [src/tools/search.ts](src/tools/search.ts), [test/tools.test.ts](test/tools.test.ts) | U11 |
+| U14 | `boostAnyOf` on `ea_search`, new tool `ea_search_and_any_of` | [src/tools/search.ts](src/tools/search.ts), [README.md](README.md), [test/tools.test.ts](test/tools.test.ts) | U12, U13 |
+| U15 | Stage 3 eval coverage | [eval/tasks.json](eval/tasks.json), [eval/fixture.ts](eval/fixture.ts) | U14 |
+| U16 | Stage 3 measurement and release | [eval/agent-tasks.md](eval/agent-tasks.md), [README.md](README.md) | U15 |
 
 ### U10. Agent measurement harness
 
@@ -437,6 +443,64 @@ Listed in execution order, which is not U-ID order — U10 was added last but ru
 - **Requirements.** R19, R20.
 - **Approach.** As U5, with Stage 1's released behaviour as the baseline. Release per U6.
 - **Dependencies.** U7, U8.
+
+### U11. `requiredTerms` conjunction
+
+- **Goal.** A call carries several required terms instead of one, every one of them required (AND), replacing the single-string `query`.
+- **Requirements.** R1, R2, R3, R15, R16.
+- **Files.** [src/tools/search.ts](src/tools/search.ts), [test/tools.test.ts](test/tools.test.ts), [test/windowing-tools.test.ts](test/windowing-tools.test.ts), [test/description-contract.test.ts](test/description-contract.test.ts), [test/response-contract.test.ts](test/response-contract.test.ts), [eval/tasks.json](eval/tasks.json), [test/helpers/test-db.ts](test/helpers/test-db.ts).
+- **Approach.** Rename `query` to `requiredTerms` and widen its schema from a string to an array of strings, rejecting a bare string by validation rather than coercing it (R15) — the rename and the shape change ship together, per the 2026-09-08 naming decision recorded under Outstanding Questions. An element matches only when every entry is present somewhere in its searchable text as a contiguous substring, matched exactly as the single `query` string is matched today (R1, R2) — no entry is ever split, so a multi-word entry is a phrase. A one-entry `requiredTerms` array reduces to exactly today's behaviour per KD2's freeze (R3). Convert the repository's 29 existing bare-string `ea_search` calls (across [test/tools.test.ts](test/tools.test.ts), [test/windowing-tools.test.ts](test/windowing-tools.test.ts), [test/description-contract.test.ts](test/description-contract.test.ts), [test/response-contract.test.ts](test/response-contract.test.ts)) and the 5 in [eval/tasks.json](eval/tasks.json) to one-entry arrays, per the Dependencies section's migration-cost accounting — mechanical, since R2 guarantees each keeps its meaning.
+- **Test scenarios.** AE3 (one-entry list reproduces today's result set and order exactly, including strings containing whitespace); AE5 (a multi-word entry and a single-word entry together narrow the result, the multi-word one matched contiguously rather than split); AE6 (a term absent from an element's searchable text excludes it, even when every other term matches); AE7 (a bare string fails schema validation and returns no results, rather than being coerced into a one-entry list or split into two terms).
+- **Verification.** `npm test`; `npm run build` then `npm run eval:run` against the converted `eval/tasks.json`.
+- **Dependencies.** Stage 2 released (U9).
+
+### U12. Cross-field rank tier and ladder generalisation
+
+- **Goal.** Terms need not share a field to match, per R1's cross-field clause — but an element carrying every term in one field still ranks above one whose terms are spread across fields.
+- **Requirements.** R7, R8, R9, R10, R11, R12.
+- **Files.** [src/tools/search.ts](src/tools/search.ts), [test/tools.test.ts](test/tools.test.ts).
+- **Approach.** Per the Ranking pipeline diagram above. After the required-term match (U11), test whether one field carried every entry: if so, run the existing field-priority ladder, generalised so a rank depending on word-boundary position requires every term to satisfy it (R7); otherwise the element still matches, but falls to a spread-across-fields tier below any single-field match (R7). Within the single-field tier, entries occurring in the supplied order and separated only by non-alphanumeric characters promote to a phrase-grade match, keeping the rank resolvable to one source table and field so promotion cannot make the reported match field depend on corpus scan order (R8, R9). Multi-term matches sharing a rank are separated by a term-proximity signal (R10 — the concrete signal is an Outstanding Question, tuned during this unit rather than fixed in advance) before the tiebreak falls through to coverage and then to model identity, keeping ordering deterministic and stable across pages (R11). Where every term matched in one field the response names that field as `matchedIn` does today; where they are spread, the per-match evidence U1 already added names each field that supplied a term instead (R12).
+- **Test scenarios.** AE1 (terms sharing one field outrank terms spread across fields, and the spread element's match evidence names both fields that supplied a term); AE2 (adjacency promotes a phrase-shaped hit above a same-rank non-adjacent one); two multi-term matches tying on rank and coverage are separated by the proximity signal rather than falling straight to model identity; result order stays stable and deterministic across a paged walk.
+- **Verification.** `npm test`.
+- **Dependencies.** U11.
+
+### U13. Term cap and per-term empty-result diagnostic
+
+- **Goal.** Bound how many entries one call can carry, and tell a caller which term emptied a no-match result instead of leaving it to guess.
+- **Requirements.** R5, R6.
+- **Files.** [src/tools/search.ts](src/tools/search.ts), [test/tools.test.ts](test/tools.test.ts).
+- **Approach.** Cap the number of entries accepted in one call at a small fixed limit, counting `requiredTerms` and any alternatives list together (R5 — the exact value is an Outstanding Question, settled during this unit against the corpus-scan cost per entry, per the Dependencies section's assumption that scanning once per term is acceptable within the cap). On a response with no matches, report per supplied term whether that term matched anywhere in the corpus at all, independent of the others, so the caller can tell which term emptied the result rather than re-guessing the whole call (R6).
+- **Test scenarios.** A call at the cap succeeds; one entry over the cap is rejected by validation rather than silently truncated; an empty-result response names each required term's own corpus-wide match status; a term present in isolation but absent alongside the others is distinguishable from a term absent everywhere.
+- **Verification.** `npm test`.
+- **Dependencies.** U11.
+
+### U14. `boostAnyOf` on `ea_search`, new tool `ea_search_and_any_of`
+
+- **Goal.** Alternative terms are exposed as two tools sharing the required-term surface U11 built, not as a mode flag or a second parameter on one tool, per R4's 2026-09-02 measurement and the 2026-09-08 naming follow-up.
+- **Requirements.** R4, R17 as it applies to this stage.
+- **Files.** [src/tools/search.ts](src/tools/search.ts), [README.md](README.md), [test/tools.test.ts](test/tools.test.ts).
+- **Approach.** `ea_search` gains an optional `boostAnyOf: string[]`: when supplied, an element that also matches at least one entry promotes one rank tier over one that does not, per the ranking pipeline's `RK`→`PR` branch — nothing is ever excluded on this basis, and an element matching none of `boostAnyOf`'s entries is returned exactly as it would be without the parameter. A new tool, `ea_search_and_any_of`, shares `ea_search`'s required-term surface (`requiredTerms`, `objectType`, `stereotype`, `packageScope`, `limit`, `offset`) and adds `andAnyOf: string[]`: combined with the required terms as `(all required) AND (at least one andAnyOf entry)`, excluding an element that matches every required term but none of `andAnyOf` — the pipeline's `N` branch. An empty `andAnyOf` array applies no filter. Both tool descriptions name their own list and state plainly what it can never do — `boostAnyOf` can never exclude, `andAnyOf` can never add a result the required terms alone would not — per R17, following the wording this session's measurement already validated for the equivalent parameters.
+- **Test scenarios.** AE4 (on `ea_search_and_any_of`: requiring the shared noun and offering two of three sibling codes as alternatives returns only those two, the third excluded); AE4a (on `ea_search`: the same call with `boostAnyOf` instead returns all four candidates, the two matching an alternative ranked above the other two, which tie exactly as they would with no alternatives supplied); `boostAnyOf` omitted reproduces the U12 baseline exactly (freeze check, mirroring KD2); an empty `andAnyOf` array is equivalent to omitting it.
+- **Verification.** `npm test`.
+- **Dependencies.** U12, U13.
+
+### U15. Stage 3 eval coverage
+
+- **Goal.** The eval fixture and task set exercise conjunction and both alternative-terms tools, so a regression is caught by the release gate rather than by a reader.
+- **Requirements.** R18.
+- **Files.** [eval/tasks.json](eval/tasks.json), [eval/fixture.ts](eval/fixture.ts), [test/eval-fixture.test.ts](test/eval-fixture.test.ts).
+- **Approach.** Add cases that cannot be answered by a single term, plus at least one exercising `ea_search`'s `boostAnyOf` and one exercising `ea_search_and_any_of`'s `andAnyOf`, following the existing hand-written task convention. New fixture rows use vocabulary disjoint from the terms the existing eval cases assert on, so a new case cannot accidentally pass against old matching logic, and the R3 comparison (U11's one-entry-list freeze) runs against a baseline captured before the fixture grows, per R18 and the same discipline U4 and U5 already applied.
+- **Test scenarios.** A two-term conjunction case that the pre-Stage-3 fixture could not express; a `boostAnyOf` case whose expected ranking differs from the no-boost baseline; an `andAnyOf` case whose expected result set is strictly narrower than the required terms alone would return.
+- **Verification.** `npm run build` then `npm run eval:run`.
+- **Dependencies.** U14.
+
+### U16. Stage 3 measurement and release
+
+- **Goal.** Establish whether the conjunction and the two alternative-terms tools change tool-call counts or ranking-position regressions, then ship the stage as the major version R16 requires.
+- **Requirements.** R19, R20.
+- **Approach.** As U5 and U9, with Stage 2's released behaviour as the baseline (`main` as it stands once U9 has shipped) per KD12's staging rule and KTD5 — Stage 3 is not measured against a synthetic pre-Stage-1 state, since a stage's number is always the marginal effect given everything already released. Release per U6's process, with a major version per R16 and a changelog entry naming both the old (`query`, bare string) and new (`requiredTerms`, array) argument shapes.
+- **Verification.** `npm run eval:model`, then the harness from U10 over both builds; or manual dispatch scored as in [eval/agent-tasks.md](eval/agent-tasks.md).
+- **Dependencies.** U15.
 
 **2026-09-02, isolated U9 measurement, with paired correctness (per KD9's reaffirmation above).** `12fccc3` (Stage 1 alone, standing in for "Stage 1 released") vs `HEAD` (Stage 1+2), `claude-sonnet-5` + `gemini-3.7-flash`, deepened to 10 repeats on B1/B4 specifically after a first 3-repeat pass proved noise-dominated (baseline call counts alone varied enough between the two passes to flip the sign of every delta claude showed). At 10 repeats, correctness graded per model per task, both arms:
 
