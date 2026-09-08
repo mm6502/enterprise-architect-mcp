@@ -278,7 +278,7 @@ describe("ea_list_diagrams windowing", () => {
 
 describe("ea_search relevance ladder", () => {
   const nameOrder = async () => {
-    const body = await call("ea_search", { query: "stav", limit: 50 });
+    const body = await call("ea_search", { requiredTerms: ["stav"], limit: 50 });
     return body.results.map((r: any) => r.Name);
   };
 
@@ -302,23 +302,23 @@ describe("ea_search relevance ladder", () => {
   });
 
   it("breaks a full tie by identity, repeatably", async () => {
-    const body = await call("ea_search", { query: "stav duplicitný", limit: 10 });
+    const body = await call("ea_search", { requiredTerms: ["stav duplicitný"], limit: 10 });
     const ids = body.results.map((r: any) => r.Object_ID);
     expect(ids.slice(0, 2)).toEqual([2010, 2011]);
 
-    const again = await call("ea_search", { query: "stav duplicitný", limit: 10 });
+    const again = await call("ea_search", { requiredTerms: ["stav duplicitný"], limit: 10 });
     expect(again.results.map((r: any) => r.Object_ID)).toEqual(ids);
   });
 
   it("reports a stable matchedIn for an object matching in two feature tables", async () => {
-    const body = await call("ea_search", { query: "stav", limit: 50 });
+    const body = await call("ea_search", { requiredTerms: ["stav"], limit: 50 });
     const carrier = body.results.find((r: any) => r.Object_ID === 2020);
     expect(carrier.matchedIn).toBe("t_attribute.Name");
   });
 
   it("walks a multi-page result exactly once and terminates", async () => {
-    const total = (await call("ea_search", { query: "stav", limit: 1 })).totalMatched;
-    const seen = await walk("ea_search", { query: "stav", limit: 2 }, "results");
+    const total = (await call("ea_search", { requiredTerms: ["stav"], limit: 1 })).totalMatched;
+    const seen = await walk("ea_search", { requiredTerms: ["stav"], limit: 2 }, "results");
 
     const ids = seen.map((r) => r.Object_ID);
     expect(ids).toHaveLength(total);
@@ -326,19 +326,19 @@ describe("ea_search relevance ladder", () => {
   });
 
   it("describes a hopelessly broad query instead of only sampling it", async () => {
-    const body = await call("ea_search", { query: "bulk element", limit: 5 });
+    const body = await call("ea_search", { requiredTerms: ["bulk element"], limit: 5 });
     expect(body.totalMatched).toBeGreaterThan(50);
 
     const summed = body.breakdown.objectType.values.reduce((n: number, v: any) => n + v.count, 0);
     expect(summed).toBe(body.totalMatched);
 
-    const narrowed = await call("ea_search", { query: "bulk element", objectType: "Screen", limit: 5 });
+    const narrowed = await call("ea_search", { requiredTerms: ["bulk element"], objectType: "Screen", limit: 5 });
     const screens = body.breakdown.objectType.values.find((v: any) => v.value === "Screen");
     expect(narrowed.totalMatched).toBe(screens.count);
   });
 
   it("drops the axis the caller already narrowed by, and keeps the one still open", async () => {
-    const body = await call("ea_search", { query: "bulk element", objectType: "Class", limit: 1 });
+    const body = await call("ea_search", { requiredTerms: ["bulk element"], objectType: "Class", limit: 1 });
     expect(body.totalMatched).toBeGreaterThan(10);
     // Restating objectType would only offer the filter already in force.
     expect(body.breakdown.objectType).toBeUndefined();
@@ -346,8 +346,8 @@ describe("ea_search relevance ladder", () => {
   });
 
   it("keeps the empty and no-match branches free of window extras", async () => {
-    for (const query of ["xyzzy_nonexistent_term_12345", "   "]) {
-      const body = await call("ea_search", { query });
+    for (const term of ["xyzzy_nonexistent_term_12345", "   "]) {
+      const body = await call("ea_search", { requiredTerms: [term] });
       expect(body).toMatchObject({ totalMatched: 0, returned: 0, offset: 0, truncated: false });
       expect(body.breakdown).toBeUndefined();
       expect(body.continuation).toBeUndefined();
@@ -355,7 +355,7 @@ describe("ea_search relevance ladder", () => {
   });
 
   it("reports a package axis whose values narrow with packageScope", async () => {
-    const body = await call("ea_search", { query: "scopeterm", limit: 1 });
+    const body = await call("ea_search", { requiredTerms: ["scopeterm"], limit: 1 });
     expect(body.totalMatched).toBe(12);
 
     const axis = body.breakdown.packageScope;
@@ -363,19 +363,19 @@ describe("ea_search relevance ladder", () => {
     expect(summed).toBe(body.totalMatched);
 
     for (const { value, count } of axis.values) {
-      const narrowed = await call("ea_search", { query: "scopeterm", packageScope: Number(value), limit: 1 });
+      const narrowed = await call("ea_search", { requiredTerms: ["scopeterm"], packageScope: Number(value), limit: 1 });
       expect(narrowed.totalMatched).toBe(count);
     }
   });
 
   it("omits the packageScope axis once a scope is already given", async () => {
-    const body = await call("ea_search", { query: "scopeterm", packageScope: SCOPE_PACKAGE, limit: 1 });
+    const body = await call("ea_search", { requiredTerms: ["scopeterm"], packageScope: SCOPE_PACKAGE, limit: 1 });
     expect(body.totalMatched).toBe(6);
     expect(body.breakdown?.packageScope).toBeUndefined();
   });
 
   it("refuses a window that could never advance", async () => {
-    const result = await client.callTool({ name: "ea_search", arguments: { query: "stav", limit: 0 } });
+    const result = await client.callTool({ name: "ea_search", arguments: { requiredTerms: ["stav"], limit: 0 } });
     expect((result as any).isError).toBe(true);
   });
 });

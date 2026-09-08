@@ -47,9 +47,9 @@ const isServerDefined = (field: string) => /^[a-z]/.test(field);
 
 /** Calls returning a success payload; a tool whose shape branches on its arguments gets one per branch. */
 const SAMPLE_CALLS: [string, Record<string, unknown>][] = [
-  ["ea_search", { query: "zmlúv" }],
+  ["ea_search", { requiredTerms: ["zmlúv"] }],
   // A window that truncates, so the continuation and breakdown branches are inspected too.
-  ["ea_search", { query: "a", limit: 1 }],
+  ["ea_search", { requiredTerms: ["a"], limit: 1 }],
   ["ea_get_element", { elementId: 1 }],
   ["ea_list_elements", { packageId: 3 }],
   ["ea_list_elements", { packageId: 3, limit: 1 }],

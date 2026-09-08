@@ -103,6 +103,69 @@ function scoreMatch(entry: CorpusEntry, foldedQuery: string): { rank: number; co
   return { rank: 10, coverage: 0 };
 }
 
+/** Below every single-field ladder rank (0-10), so R1's cross-field match never outranks one. */
+const SPREAD_RANK = 11;
+
+/**
+ * Generalises scoreMatch to several required terms, reducing exactly to it for one term —
+ * that identity is what lets R3's freeze hold by construction rather than by a parallel code
+ * path. Exact/prefix/word-boundary distinctions (ranks 0-2) lose their meaning once more than
+ * one term is involved, so a multi-term single-field t_object.Name match settles at the
+ * ladder's infix rank (3); every other bucket depends only on (sourceTable, sourceField), so
+ * it is unaffected by term count. Coverage becomes the summed term length over the text
+ * length, capped at 1 — how this should really work for a multi-term match is an open
+ * question (see Outstanding Questions), and this is a placeholder, not a final answer.
+ */
+function scoreMultiMatch(entry: CorpusEntry, foldedTerms: string[]): { rank: number; coverage: number } {
+  if (foldedTerms.length === 1) return scoreMatch(entry, foldedTerms[0]);
+
+  const base = scoreMatch(entry, foldedTerms[0]);
+  const text = entry.foldedText;
+  const coverage = text.length > 0
+    ? Math.min(1, foldedTerms.reduce((sum, t) => sum + t.length, 0) / text.length)
+    : 0;
+  const rank = entry.sourceTable === "t_object" && entry.sourceField === "Name" ? 3 : base.rank;
+  return { rank, coverage };
+}
+
+/**
+ * Whether every required term occurs somewhere in this object's searchable text (R1), and how
+ * it ranks. A single entry carrying every term ranks via the existing ladder (R7); an object
+ * whose terms are only found spread across separate entries still matches, but ranks below
+ * every single-field tier — R1's "ranking preference, not a condition of matching". Reduces
+ * to today's single-term matching and ranking exactly when only one term is supplied, since
+ * every entry containing that one term trivially "carries every term".
+ */
+function matchObject(objEntries: CorpusEntry[], foldedTerms: string[]): { rank: number; coverage: number; matchedIn: string | null } | null {
+  for (const term of foldedTerms) {
+    if (!objEntries.some((e) => e.foldedText.includes(term))) return null;
+  }
+
+  let best: { rank: number; coverage: number; matchedIn: string } | undefined;
+  for (const e of objEntries) {
+    if (!foldedTerms.every((t) => e.foldedText.includes(t))) continue;
+    const { rank, coverage } = scoreMultiMatch(e, foldedTerms);
+    if (!best || rank < best.rank || (rank === best.rank && coverage > best.coverage)) {
+      best = { rank, coverage, matchedIn: `${e.sourceTable}.${e.sourceField}` };
+    }
+  }
+  if (best) return best;
+
+  // Spread: no single entry carries every term. Coverage is the average of each term's own
+  // best-entry coverage — like the rank placeholder above, an interim answer, not a final one.
+  let coverageSum = 0;
+  for (const term of foldedTerms) {
+    let bestCoverage = 0;
+    for (const e of objEntries) {
+      if (!e.foldedText.includes(term)) continue;
+      const { coverage } = scoreMatch(e, term);
+      if (coverage > bestCoverage) bestCoverage = coverage;
+    }
+    coverageSum += bestCoverage;
+  }
+  return { rank: SPREAD_RANK, coverage: coverageSum / foldedTerms.length, matchedIn: null };
+}
+
 function buildCorpus(db: Database): CorpusEntry[] {
   const cached = corpora.get(db);
   if (cached) return cached;
@@ -181,30 +244,35 @@ function originalFor(entry: CorpusEntry, src: EvidenceSources): { text: string; 
 
 /**
  * Why each windowed element matched. Scanning is confined to the window, so the cost is
- * bounded by what the response shows rather than by the corpus.
+ * bounded by what the response shows rather than by the corpus. Matches an entry against any
+ * of the required terms (not all of them, unlike matchObject) since evidence is about what
+ * each field contributed, and reduces to single-term behaviour exactly when only one is given.
  */
 function collectEvidence(
   db: Database,
   entries: CorpusEntry[],
   rows: Map<number, any>,
   windowIds: Set<number>,
-  foldedQuery: string
+  foldedTerms: string[]
 ): Map<number, { items: MatchEvidence[]; totalMatched: number }> {
   const hits = new Map<number, CorpusEntry[]>();
   for (const entry of entries) {
-    if (!windowIds.has(entry.objectId) || !entry.foldedText.includes(foldedQuery)) continue;
+    if (!windowIds.has(entry.objectId) || !foldedTerms.some((t) => entry.foldedText.includes(t))) continue;
     const list = hits.get(entry.objectId);
     if (list) list.push(entry);
     else hits.set(entry.objectId, [entry]);
   }
 
-  const kept = new Map<number, { entries: CorpusEntry[]; totalMatched: number }>();
+  const kept = new Map<number, { entries: Array<{ entry: CorpusEntry; term: string }>; totalMatched: number }>();
   for (const [objectId, list] of hits) {
     const ranked = list
-      .map((e) => ({ e, ...scoreMatch(e, foldedQuery) }))
+      .map((e) => {
+        const present = foldedTerms.filter((t) => e.foldedText.includes(t));
+        return { e, present, ...scoreMultiMatch(e, present) };
+      })
       .sort((a, b) => a.rank - b.rank || b.coverage - a.coverage || a.e.sourceId - b.e.sourceId)
       .slice(0, MAX_INLINE_MATCHES)
-      .map((r) => r.e);
+      .map((r) => ({ entry: r.e, term: r.present[0] }));
     kept.set(objectId, { entries: ranked, totalMatched: list.length });
   }
 
@@ -212,7 +280,7 @@ function collectEvidence(
   const operationIds = new Set<number>();
   const constraintOwners = new Set<number>();
   for (const { entries: shown } of kept.values()) {
-    for (const e of shown) {
+    for (const { entry: e } of shown) {
       if (e.sourceTable === "t_attribute") attributeIds.add(e.sourceId);
       else if (e.sourceTable === "t_operation") operationIds.add(e.sourceId);
       else if (e.sourceTable === "t_objectconstraint") constraintOwners.add(e.sourceId);
@@ -236,10 +304,10 @@ function collectEvidence(
   const evidence = new Map<number, { items: MatchEvidence[]; totalMatched: number }>();
   for (const [objectId, { entries: shown, totalMatched }] of kept) {
     const items: MatchEvidence[] = [];
-    for (const entry of shown) {
+    for (const { entry, term } of shown) {
       const original = originalFor(entry, src);
       if (!original) continue;
-      const excerpt = excerptAround(original.text, entry.foldedText, foldedQuery, SNIPPET_CHARS);
+      const excerpt = excerptAround(original.text, entry.foldedText, term, SNIPPET_CHARS);
       items.push({
         matchedIn: `${entry.sourceTable}.${entry.sourceField}`,
         sourceId: entry.sourceId,
@@ -256,9 +324,12 @@ function collectEvidence(
 export function configureSearchTools(server: McpServer, model: ModelAccess): void {
   server.tool(
     "ea_search",
-    "Search Enterprise Architect model elements by name, alias, notes, attribute names/notes, operation names/notes, or constraint notes. Matching is case- and diacritic-insensitive across European Latin alphabets and sees through entity-encoded text. Matching elements are returned in `results`, strongest match first, each with a decoded note preview and a truncation flag; equally strong matches fall back to the model's internal identity, a stable but artificial order. Each result also carries `matches`, the evidence for why it was returned: the field that matched, the id and name of the attribute, operation or constraint it came from, and a snippet of the author's own text around the match. Evidence is strongest-first and capped, and `_meta.matches` on the result reports how many matches were found and how many were withheld. The note preview centres on the match when the element's own note is what matched. `packageScope` restricts results to a package (given as its id or its name) and its descendants. Walk a large result set with `offset` rather than a larger `limit`; while rows remain, `continuation` names the next call. When far more elements match than one window can hold, `breakdown` reports how they distribute — by `objectType`, `stereotype`, or, unless already scoped, by `packageScope` (reported as the matching package's id, which the next call can pass straight back) — so the next call can narrow instead of paging.",
+    "Search Enterprise Architect model elements by name, alias, notes, attribute names/notes, operation names/notes, or constraint notes. Matching is case- and diacritic-insensitive across European Latin alphabets and sees through entity-encoded text. `requiredTerms` is a list of terms every one of which must occur somewhere in an element's searchable text (conjunction) — terms need not share a field, but sharing one ranks higher; each term is matched as a contiguous substring exactly as a single term is, so a term carrying whitespace is a phrase and is never split. A one-entry list behaves exactly as a single search term always has. Matching elements are returned in `results`, strongest match first, each with a decoded note preview and a truncation flag; equally strong matches fall back to the model's internal identity, a stable but artificial order. Each result also carries `matches`, the evidence for why it was returned: the field that matched, the id and name of the attribute, operation or constraint it came from, and a snippet of the author's own text around the match. Evidence is strongest-first and capped, and `_meta.matches` on the result reports how many matches were found and how many were withheld. The note preview centres on the match when the element's own note is what matched. `packageScope` restricts results to a package (given as its id or its name) and its descendants. Walk a large result set with `offset` rather than a larger `limit`; while rows remain, `continuation` names the next call. When far more elements match than one window can hold, `breakdown` reports how they distribute — by `objectType`, `stereotype`, or, unless already scoped, by `packageScope` (reported as the matching package's id, which the next call can pass straight back) — so the next call can narrow instead of paging.",
     {
-      query: z.string().describe("Search term to find across all model text (names, notes, aliases, attributes, operations, constraints)"),
+      requiredTerms: z
+        .array(z.string())
+        .min(1)
+        .describe("Terms every one of which must occur somewhere in the element's searchable text (names, notes, aliases, attributes, operations, constraints); terms need not share a field"),
       objectType: z
         .string()
         .optional()
@@ -272,7 +343,7 @@ export function configureSearchTools(server: McpServer, model: ModelAccess): voi
       offset: offsetParam,
     },
     READ_ONLY,
-    async ({ query, objectType, stereotype, packageScope, limit, offset }) => {
+    async ({ requiredTerms, objectType, stereotype, packageScope, limit, offset }) => {
       const db = await model.database();
       try {
         let subtree: Set<number> | undefined;
@@ -302,9 +373,9 @@ export function configureSearchTools(server: McpServer, model: ModelAccess): voi
         }
 
         const entries = buildCorpus(db);
-        const foldedQuery = foldText(query).trim();
+        const foldedTerms = requiredTerms.map((t) => foldText(t).trim()).filter((t) => t.length > 0);
 
-        if (foldedQuery.length === 0) {
+        if (foldedTerms.length === 0) {
           return {
             content: [{ type: "text" as const, text: JSON.stringify({
               results: [],
@@ -313,22 +384,24 @@ export function configureSearchTools(server: McpServer, model: ModelAccess): voi
               offset,
               truncated: false,
               _meta: { sourceTables: ["t_object", "t_attribute", "t_operation", "t_objectconstraint", "t_package"] },
-              error: "Query is empty after normalization.",
+              error: "requiredTerms is empty after normalization.",
             }, null, 2) }],
           };
         }
 
-        // Find matching object IDs with match quality ranking
-        const matchMap = new Map<number, { rank: number; coverage: number; matchedIn: string }>();
-
+        // Group once so a term found via one entry and another via a different entry of the
+        // same object still counts as a match (R1): terms need not share a field.
+        const byObject = new Map<number, CorpusEntry[]>();
         for (const entry of entries) {
-          if (!entry.foldedText.includes(foldedQuery)) continue;
+          const list = byObject.get(entry.objectId);
+          if (list) list.push(entry);
+          else byObject.set(entry.objectId, [entry]);
+        }
 
-          const { rank, coverage } = scoreMatch(entry, foldedQuery);
-          const existing = matchMap.get(entry.objectId);
-          if (existing && (existing.rank < rank || (existing.rank === rank && existing.coverage >= coverage))) continue;
-
-          matchMap.set(entry.objectId, { rank, coverage, matchedIn: `${entry.sourceTable}.${entry.sourceField}` });
+        const matchMap = new Map<number, { rank: number; coverage: number; matchedIn: string | null }>();
+        for (const [objectId, objEntries] of byObject) {
+          const match = matchObject(objEntries, foldedTerms);
+          if (match) matchMap.set(objectId, match);
         }
 
         if (matchMap.size === 0) {
@@ -388,15 +461,17 @@ export function configureSearchTools(server: McpServer, model: ModelAccess): voi
 
         const window = sorted.slice(offset, offset + limit);
         const truncated = isTruncated(offset, window.length, totalMatched);
-        const evidence = collectEvidence(db, entries, rowMap, new Set(window.map((r: any) => r.Object_ID)), foldedQuery);
+        const evidence = collectEvidence(db, entries, rowMap, new Set(window.map((r: any) => r.Object_ID)), foldedTerms);
         const results = window.map((r: any) => {
           const decodedNote = decodeEntities(r.Note);
           const matchedIn = matchMap.get(r.Object_ID)?.matchedIn ?? null;
           // Previewing from the start hides the reason for a match that lies deeper in the note.
+          // matchedIn is only "t_object.Note" when the note itself carried every required term
+          // (matchObject's single-field branch), so centring on the first term is always valid here.
           const notePreview = !decodedNote
             ? null
             : matchedIn === "t_object.Note"
-              ? excerptAround(decodedNote, foldText(decodedNote), foldedQuery, NOTE_PREVIEW_CHARS).text
+              ? excerptAround(decodedNote, foldText(decodedNote), foldedTerms[0], NOTE_PREVIEW_CHARS).text
               : decodedNote.slice(0, NOTE_PREVIEW_CHARS);
           const notePreviewTruncated = decodedNote != null && decodedNote.length > NOTE_PREVIEW_CHARS;
           const matches = evidence.get(r.Object_ID);
@@ -432,7 +507,7 @@ export function configureSearchTools(server: McpServer, model: ModelAccess): voi
 
         const continuation = buildContinuation(
           "ea_search",
-          { query, objectType, stereotype, packageScope, limit },
+          { requiredTerms, objectType, stereotype, packageScope, limit },
           offset,
           results.length,
           totalMatched

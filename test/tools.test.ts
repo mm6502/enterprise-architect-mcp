@@ -44,7 +44,7 @@ async function callTool(name: string, args: Record<string, unknown> = {}) {
 
 describe("ea_search", () => {
   it("finds elements by name", async () => {
-    const res = await callTool("ea_search", { query: "zmlúv" });
+    const res = await callTool("ea_search", { requiredTerms: ["zmlúv"] });
     const data = res.json();
     expect(data.results.length).toBeGreaterThan(0);
     expect(data.results.some((e: any) => e.Name === "Správa zmlúv")).toBe(true);
@@ -52,46 +52,46 @@ describe("ea_search", () => {
   });
 
   it("finds elements by alias", async () => {
-    const res = await callTool("ea_search", { query: "UC_001" });
+    const res = await callTool("ea_search", { requiredTerms: ["UC_001"] });
     const data = res.json();
     expect(data.results.some((e: any) => e.Alias === "UC_001")).toBe(true);
   });
 
   it("finds elements by note content", async () => {
-    const res = await callTool("ea_search", { query: "Základná entita" });
+    const res = await callTool("ea_search", { requiredTerms: ["Základná entita"] });
     const data = res.json();
     expect(data.results.some((e: any) => e.Name === "Osoba")).toBe(true);
   });
 
   it("filters by objectType", async () => {
-    const res = await callTool("ea_search", { query: "zml", objectType: "Class" });
+    const res = await callTool("ea_search", { requiredTerms: ["zml"], objectType: "Class" });
     const data = res.json();
     expect(data.results.every((e: any) => e.Object_Type === "Class")).toBe(true);
   });
 
   it("filters by stereotype", async () => {
-    const res = await callTool("ea_search", { query: "zml", stereotype: "Obrazovka" });
+    const res = await callTool("ea_search", { requiredTerms: ["zml"], stereotype: "Obrazovka" });
     const data = res.json();
     expect(data.results.length).toBe(1);
     expect(data.results[0].Stereotype).toBe("Obrazovka");
   });
 
   it("respects limit", async () => {
-    const res = await callTool("ea_search", { query: "a", limit: 2 });
+    const res = await callTool("ea_search", { requiredTerms: ["a"], limit: 2 });
     const data = res.json();
     expect(data.results.length).toBeLessThanOrEqual(2);
     expect(data.returned).toBeLessThanOrEqual(2);
   });
 
   it("returns structured empty result when no matches", async () => {
-    const res = await callTool("ea_search", { query: "nonexistent_xyz_12345" });
+    const res = await callTool("ea_search", { requiredTerms: ["nonexistent_xyz_12345"] });
     const data = res.json();
     expect(data.results).toEqual([]);
     expect(data.totalMatched).toBe(0);
   });
 
   it("returns structured empty result for whitespace query", async () => {
-    const res = await callTool("ea_search", { query: "   " });
+    const res = await callTool("ea_search", { requiredTerms: ["   "] });
     const data = res.json();
     expect(data.results).toEqual([]);
     expect(data.totalMatched).toBe(0);
@@ -99,7 +99,7 @@ describe("ea_search", () => {
   });
 
   it("includes PackageName in results", async () => {
-    const res = await callTool("ea_search", { query: "Správa zmlúv" });
+    const res = await callTool("ea_search", { requiredTerms: ["Správa zmlúv"] });
     const data = res.json();
     const uc = data.results.find((e: any) => e.Name === "Správa zmlúv");
     expect(uc.PackageName).toBe("Use Cases");
@@ -107,25 +107,25 @@ describe("ea_search", () => {
 
   it("finds entity-encoded text after decoding (R3)", async () => {
     // Element 6 has note "Pr&#225;vnick&#225; osoba..." — search for decoded form
-    const res = await callTool("ea_search", { query: "právnická" });
+    const res = await callTool("ea_search", { requiredTerms: ["právnická"] });
     const data = res.json();
     expect(data.results.some((e: any) => e.Name === "PRÁVNICKÁ OSOBA")).toBe(true);
   });
 
   it("matches case-insensitively across accented Latin text (R3)", async () => {
-    const res = await callTool("ea_search", { query: "PRÁVNICKÁ" });
+    const res = await callTool("ea_search", { requiredTerms: ["PRÁVNICKÁ"] });
     const data = res.json();
     expect(data.results.some((e: any) => e.Name === "PRÁVNICKÁ OSOBA")).toBe(true);
   });
 
   it("matches infix (substring, not word boundary)", async () => {
-    const res = await callTool("ea_search", { query: "vnick" });
+    const res = await callTool("ea_search", { requiredTerms: ["vnick"] });
     const data = res.json();
     expect(data.results.some((e: any) => e.Name === "PRÁVNICKÁ OSOBA")).toBe(true);
   });
 
   it("carries notePreviewTruncated flag on long notes", async () => {
-    const res = await callTool("ea_search", { query: "výpis" });
+    const res = await callTool("ea_search", { requiredTerms: ["výpis"] });
     const data = res.json();
     const req = data.results.find((e: any) => e.Name === "Požiadavka na výpis");
     expect(req).toBeDefined();
@@ -134,7 +134,7 @@ describe("ea_search", () => {
   });
 
   it("names the field and the attribute that produced the match", async () => {
-    const res = await callTool("ea_search", { query: "právnickej" });
+    const res = await callTool("ea_search", { requiredTerms: ["právnickej"] });
     const data = res.json();
     const elem = data.results.find((e: any) => e.Object_ID === 6);
     expect(elem).toBeDefined();
@@ -144,7 +144,7 @@ describe("ea_search", () => {
   });
 
   it("quotes the author's text rather than the folded form used for matching", async () => {
-    const res = await callTool("ea_search", { query: "pravnickej" });
+    const res = await callTool("ea_search", { requiredTerms: ["pravnickej"] });
     const data = res.json();
     const elem = data.results.find((e: any) => e.Object_ID === 6);
     expect(elem.matches[0].snippet).toBe("Názov právnickej osoby");
@@ -152,7 +152,7 @@ describe("ea_search", () => {
   });
 
   it("orders evidence by the same ladder as the results, and caps it", async () => {
-    const res = await callTool("ea_search", { query: "a", limit: 100 });
+    const res = await callTool("ea_search", { requiredTerms: ["a"], limit: 100 });
     const data = res.json();
     const elem = data.results.find((e: any) => e.Object_ID === 2);
     expect(elem.matches.map((m: any) => m.matchedIn)).toEqual([
@@ -166,7 +166,7 @@ describe("ea_search", () => {
   });
 
   it("reports evidence for an element matched only on its own name", async () => {
-    const res = await callTool("ea_search", { query: "Zoznam zmlúv" });
+    const res = await callTool("ea_search", { requiredTerms: ["Zoznam zmlúv"] });
     const data = res.json();
     const elem = data.results.find((e: any) => e.Object_ID === 3);
     expect(elem.matches).toHaveLength(1);
@@ -175,7 +175,7 @@ describe("ea_search", () => {
   });
 
   it("centres NotePreview on the match when the element's own note is what matched", async () => {
-    const res = await callTool("ea_search", { query: "preddavku" });
+    const res = await callTool("ea_search", { requiredTerms: ["preddavku"] });
     const data = res.json();
     const req = data.results.find((e: any) => e.Object_ID === 8);
     expect(req.matchedIn).toBe("t_object.Note");
@@ -184,7 +184,7 @@ describe("ea_search", () => {
   });
 
   it("reports totalMatched and continuation when capped", async () => {
-    const res = await callTool("ea_search", { query: "a", limit: 2 });
+    const res = await callTool("ea_search", { requiredTerms: ["a"], limit: 2 });
     const data = res.json();
     if (data.totalMatched > 2) {
       expect(data.truncated).toBe(true);
@@ -195,7 +195,7 @@ describe("ea_search", () => {
 
   it("finds matches in attribute notes", async () => {
     // Attribute 4 notes: "N&#225;zov pr&#225;vnickej osoby" → decoded "Názov právnickej osoby"
-    const res = await callTool("ea_search", { query: "právnickej osoby" });
+    const res = await callTool("ea_search", { requiredTerms: ["právnickej osoby"] });
     const data = res.json();
     expect(data.results.length).toBeGreaterThan(0);
   });
@@ -209,7 +209,7 @@ describe("ea_search", () => {
     expect(description).toMatch(/snippet/);
     expect(description).toMatch(/centre/);
 
-    const res = await callTool("ea_search", { query: "právnickej osoby" });
+    const res = await callTool("ea_search", { requiredTerms: ["právnickej osoby"] });
     const data = res.json();
     const elem = data.results[0];
     expect(elem.matches[0]).toEqual(
@@ -222,11 +222,11 @@ describe("ea_search", () => {
 
   it("restricts results to a package and its descendants", async () => {
     // "osoba" matches objects 5 (pkg 2), 6 (pkg 3) and 7 (pkg 5) unscoped.
-    const unscoped = await callTool("ea_search", { query: "osoba" });
+    const unscoped = await callTool("ea_search", { requiredTerms: ["osoba"] });
     expect(unscoped.json().totalMatched).toBe(3);
 
     // Package 4's subtree is {4, 5, 6} — only object 7 (pkg 5) qualifies.
-    const scoped = await callTool("ea_search", { query: "osoba", packageScope: 4 });
+    const scoped = await callTool("ea_search", { requiredTerms: ["osoba"], packageScope: 4 });
     const data = scoped.json();
     expect(data.totalMatched).toBe(1);
     expect(data.results[0].Object_ID).toBe(7);
@@ -234,7 +234,7 @@ describe("ea_search", () => {
 
   it("resolves a package scope given by name", async () => {
     // Package 6, "Resolve fixtures", holds only objects 9-11.
-    const res = await callTool("ea_search", { query: "resolve", packageScope: "Resolve fixtures" });
+    const res = await callTool("ea_search", { requiredTerms: ["resolve"], packageScope: "Resolve fixtures" });
     const data = res.json();
     expect(data.totalMatched).toBe(2);
     expect(data.results.map((r: any) => r.Object_ID).sort()).toEqual([10, 11]);
@@ -242,7 +242,7 @@ describe("ea_search", () => {
 
   it("reports an ambiguous package name rather than guessing", async () => {
     // "Use Cases" names both package 3 and package 5.
-    const res = await callTool("ea_search", { query: "osoba", packageScope: "Use Cases" });
+    const res = await callTool("ea_search", { requiredTerms: ["osoba"], packageScope: "Use Cases" });
     expect(res.isError).toBe(true);
     const data = res.json();
     expect(data.error).toBe("ambiguous_package");
@@ -250,16 +250,62 @@ describe("ea_search", () => {
   });
 
   it("reports a missing package scope as a structured error", async () => {
-    const res = await callTool("ea_search", { query: "osoba", packageScope: 9999 });
+    const res = await callTool("ea_search", { requiredTerms: ["osoba"], packageScope: 9999 });
     expect(res.isError).toBe(true);
     expect(res.json().error).toBe("not_found");
   });
 
   it("carries the package scope through continuation", async () => {
-    const res = await callTool("ea_search", { query: "resolve", packageScope: 6, limit: 1 });
+    const res = await callTool("ea_search", { requiredTerms: ["resolve"], packageScope: 6, limit: 1 });
     const data = res.json();
     expect(data.truncated).toBe(true);
     expect(data.continuation.arguments.packageScope).toBe(6);
+  });
+
+  // ─── U11: requiredTerms conjunction (R1, R2, R3, R15) ───
+
+  it("excludes an element missing any one required term (R1)", async () => {
+    // "osoba" alone matches 3 elements; no element contains the second, nonexistent term.
+    const res = await callTool("ea_search", { requiredTerms: ["osoba", "zzznoexistterm"] });
+    const data = res.json();
+    expect(data.results).toEqual([]);
+    expect(data.totalMatched).toBe(0);
+  });
+
+  it("matches when required terms are satisfied by different fields of the same element (R1)", async () => {
+    // Object 2: "zmluvn" occurs in Name/Note/attribute "priezvisko"; "krstné" occurs only in
+    // attribute "meno" — no single field carries both, so this can only match by combining fields.
+    const res = await callTool("ea_search", { requiredTerms: ["zmluvn", "krstné"] });
+    const data = res.json();
+    expect(data.totalMatched).toBe(1);
+    expect(data.results[0].Object_ID).toBe(2);
+    // Spread across fields: no single field named the match, so the per-match evidence carries it instead.
+    expect(data.results[0].matchedIn).toBeNull();
+    const matchedFields = new Set(data.results[0].matches.map((m: any) => m.matchedIn));
+    expect(matchedFields.size).toBeGreaterThan(1);
+  });
+
+  it("matches a multi-word entry contiguously rather than splitting it into separate terms (R2)", async () => {
+    // "Krstné" (attribute "meno") and "strana" (Name) each exist somewhere on object 2, but never
+    // adjacent as the phrase "Krstné strana" — a split-into-words implementation would still match.
+    const res = await callTool("ea_search", { requiredTerms: ["Krstné strana"] });
+    const data = res.json();
+    expect(data.results).toEqual([]);
+    expect(data.totalMatched).toBe(0);
+  });
+
+  it("ranks a single field carrying every required term above the spread tier", async () => {
+    // Object 6's constraint note alone contains both "právnick" and "IČO"; no other single field does.
+    const res = await callTool("ea_search", { requiredTerms: ["právnick", "IČO"] });
+    const data = res.json();
+    expect(data.totalMatched).toBe(1);
+    expect(data.results[0].Object_ID).toBe(6);
+    expect(data.results[0].matchedIn).toBe("t_objectconstraint.Notes");
+  });
+
+  it("rejects a bare string rather than coercing it into a one-entry list (R15)", async () => {
+    const res = await callTool("ea_search", { requiredTerms: "osoba" });
+    expect(res.isError).toBe(true);
   });
 });
 
