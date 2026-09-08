@@ -343,6 +343,30 @@ describe("ea_search", () => {
       { term: "zzznoexistterm123", matchedAnywhere: false },
     ]);
   });
+
+  // ─── U14: boostAnyOf on ea_search, ea_search_and_any_of's andAnyOf (R4, R17) ───
+
+  it("boostAnyOf promotes without excluding — every candidate returned, the matching one first", async () => {
+    // "osoba" alone matches 5, 6, 7 (tied at rank 0: 5 then 7 by identity, then 6 at rank 2).
+    // Only object 7's note contains "architektúre".
+    const res = await callTool("ea_search", { requiredTerms: ["osoba"], boostAnyOf: ["architektúre"] });
+    const data = res.json();
+    expect(data.totalMatched).toBe(3);
+    expect(data.results.map((r: any) => r.Object_ID)).toEqual([7, 5, 6]);
+  });
+
+  it("andAnyOf on ea_search_and_any_of narrows to only the elements also matching an alternative", async () => {
+    const res = await callTool("ea_search_and_any_of", { requiredTerms: ["osoba"], andAnyOf: ["architektúre"] });
+    const data = res.json();
+    expect(data.totalMatched).toBe(1);
+    expect(data.results[0].Object_ID).toBe(7);
+  });
+
+  it("an empty andAnyOf array applies no filter", async () => {
+    const res = await callTool("ea_search_and_any_of", { requiredTerms: ["osoba"], andAnyOf: [] });
+    const data = res.json();
+    expect(data.totalMatched).toBe(3);
+  });
 });
 
 // ─── ea_get_element ───
