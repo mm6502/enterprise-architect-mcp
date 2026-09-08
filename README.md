@@ -180,9 +180,16 @@ hand; answering the prompt once is what makes that unnecessary.
 
 ## Available Tools
 
+> **Breaking change (v3.0.0):** `ea_search` no longer accepts a bare `query` string. Callers now send
+> `requiredTerms` — a list of terms, every one required (a one-entry list behaves exactly as the old
+> single-term `query` did). The old string shape is rejected by schema validation rather than silently
+> reinterpreted. A new tool, `ea_search_and_any_of`, adds a required-and-alternative narrowing filter
+> alongside `ea_search`'s own rank-boosting `boostAnyOf`.
+
 | Tool | Description |
 |------|-------------|
-| `ea_search` | Full-text search across elements, attributes, operations, and constraints. Case- and diacritic-insensitive across European Latin alphabets, decodes entity-encoded text. Each result carries the evidence for its match — the field, the attribute or operation it came from, and a snippet of the author's own text. Accepts a `packageScope` (package id or name) to restrict results to a package and its descendants, and reports a package breakdown axis when unscoped. |
+| `ea_search` | Full-text search across elements, attributes, operations, and constraints. Takes `requiredTerms`, a list of terms every one of which must occur somewhere in an element's searchable text (conjunction) — terms need not share a field, but sharing one ranks higher. `boostAnyOf` is an optional list of further terms that promote a result's rank without ever excluding on that basis. Case- and diacritic-insensitive across European Latin alphabets, decodes entity-encoded text. Each result carries the evidence for its match — the field, the attribute or operation it came from, and a snippet of the author's own text. Accepts a `packageScope` (package id or name) to restrict results to a package and its descendants, and reports a package breakdown axis when unscoped. |
+| `ea_search_and_any_of` | Same matching as `ea_search`, plus `andAnyOf`: an optional list of terms where a result must satisfy `requiredTerms` **and** at least one `andAnyOf` term — narrowing rather than reordering. Use this instead of `ea_search` when an alternative term should exclude, not just promote. |
 | `ea_get_element` | Full element detail — attributes, operations, diagrams it appears on, constraints (pre/post/invariant/process). Flags whether attribute multiplicity is contrastive. |
 | `ea_list_elements` | List elements in a package, optionally filtered by type. Windowed: reports the total and pages with `offset`. |
 | `ea_get_connectors` | Relationships for an element — includes feature-link resolution (which attribute/operation each end attaches to). `Generalization` connectors carry a `role` (`child`/`parent`) on each end; filter `connectorType: "Generalization"` with `direction: "incoming"`/`"outgoing"` to list an element's direct children/parent(s) without a diagram. |
