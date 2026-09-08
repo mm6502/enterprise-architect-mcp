@@ -125,22 +125,40 @@ function isPhraseGrade(text: string, foldedTerms: string[]): boolean {
 }
 
 /**
- * How far apart several required terms sit in the text that carried all of them — the span
- * from the first term's start to the last term's end. Smaller is more proximate (R10). Always
+ * How far apart several required terms sit in the text that carried all of them — the smallest
+ * span containing at least one occurrence of every term. Smaller is more proximate (R10). Always
  * 0 for a single term, so it never perturbs the single-term freeze (R3): every candidate ties
  * at 0 and the comparison falls straight through to the next tiebreak, exactly as it does today.
+ * A term repeated elsewhere in the text must not make a genuinely tight cluster look far apart,
+ * so every occurrence of every term is a candidate, not just each term's first (the classic
+ * "smallest range covering every list" problem: merge all occurrences by position, then slide a
+ * window until it covers every term, shrinking from the left while it still does).
  */
 function termProximity(text: string, foldedTerms: string[]): number {
   if (foldedTerms.length < 2) return 0;
-  let start = Infinity;
-  let end = -Infinity;
-  for (const t of foldedTerms) {
-    const at = text.indexOf(t);
-    if (at < 0) continue;
-    start = Math.min(start, at);
-    end = Math.max(end, at + t.length);
+
+  const occurrences: Array<{ pos: number; term: number }> = [];
+  foldedTerms.forEach((t, term) => {
+    for (let at = text.indexOf(t); at >= 0; at = text.indexOf(t, at + 1)) {
+      occurrences.push({ pos: at, term });
+    }
+  });
+  if (occurrences.length === 0) return 0;
+  occurrences.sort((a, b) => a.pos - b.pos);
+
+  const counts = new Array(foldedTerms.length).fill(0);
+  let distinct = 0;
+  let left = 0;
+  let best = Infinity;
+  for (let right = 0; right < occurrences.length; right++) {
+    if (counts[occurrences[right].term]++ === 0) distinct++;
+    while (distinct === foldedTerms.length) {
+      best = Math.min(best, occurrences[right].pos - occurrences[left].pos);
+      if (--counts[occurrences[left].term] === 0) distinct--;
+      left++;
+    }
   }
-  return start === Infinity ? 0 : end - start;
+  return best === Infinity ? 0 : best;
 }
 
 /**

@@ -392,8 +392,8 @@ describe("ea_search", () => {
   });
 
   it("combines a multi-term conjunction with an objectType filter", async () => {
-    // Both terms exist together only on object 13 ("Vydanie povolenia"), a UseCase; restricting
-    // to a different object type must exclude it despite the conjunction otherwise matching.
+    // Objects 13-15 all carry both terms (per the U12 ranking test above); restricting to their
+    // real object type must keep them, restricting to a different one must exclude all three.
     const matching = await callTool("ea_search", { requiredTerms: ["vydanie", "povolen"], objectType: "UseCase" });
     expect(matching.json().results.map((r: any) => r.Object_ID)).toEqual([13, 14, 15]);
 
