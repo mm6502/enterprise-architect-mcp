@@ -230,7 +230,7 @@ export interface AgentRunConfig {
 // names as "Unknown tool name", which silently drops every tool (not just the intended
 // native ones), leaving the model with nothing to call at all.
 const EA_TOOL_NAMES = [
-  "ea_search", "ea_get_element", "ea_list_elements", "ea_get_connectors",
+  "ea_search", "ea_search_and_any_of", "ea_get_element", "ea_list_elements", "ea_get_connectors",
   "ea_get_package_tree", "ea_get_diagram_elements", "ea_get_scenarios",
   "ea_resolve", "ea_list_diagrams", "ea_get_schema", "ea_get_model_info",
 ].map((name) => `mcp-server-ea-${name}`);
