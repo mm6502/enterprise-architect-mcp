@@ -441,9 +441,9 @@ async function runSearch(
     }
 
     const entries = buildCorpus(db);
-    const foldedTerms = requiredTerms.map((t) => foldText(t).trim()).filter((t) => t.length > 0);
+    const normalizedTerms = requiredTerms.map((t) => foldText(t).trim());
 
-    if (foldedTerms.length === 0) {
+    if (normalizedTerms.some((t) => t.length === 0)) {
       return {
         content: [{ type: "text" as const, text: JSON.stringify({
           results: [],
@@ -456,6 +456,10 @@ async function runSearch(
         }, null, 2) }],
       };
     }
+
+    // Duplicate terms would otherwise double-count coverage and cross the phrase-grade check
+    // against itself; a caller-supplied duplicate is a no-op, not a stronger requirement.
+    const foldedTerms = [...new Set(normalizedTerms)];
 
     // Group once so a term found via one entry and another via a different entry of the
     // same object still counts as a match (R1): terms need not share a field.
@@ -658,6 +662,7 @@ export function configureSearchTools(server: McpServer, model: ModelAccess): voi
       requiredTerms: REQUIRED_TERMS_PARAM,
       boostAnyOf: z
         .array(z.string())
+        .max(10)
         .optional()
         .describe("Terms that promote a result's rank when also present; never excludes. Use ea_search_and_any_of to narrow instead."),
       objectType: OBJECT_TYPE_PARAM,
@@ -680,6 +685,7 @@ export function configureSearchTools(server: McpServer, model: ModelAccess): voi
       requiredTerms: REQUIRED_TERMS_PARAM,
       andAnyOf: z
         .array(z.string())
+        .max(10)
         .optional()
         .describe("Terms a result must also contain at least one of, in addition to requiredTerms; never adds results. Use ea_search's boostAnyOf to only reorder instead."),
       objectType: OBJECT_TYPE_PARAM,

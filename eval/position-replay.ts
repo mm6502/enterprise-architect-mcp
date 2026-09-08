@@ -71,8 +71,12 @@ async function connect(serverEntry: string, modelPath: string): Promise<Connecti
 }
 
 function parsePayload(response: unknown): { Object_ID: number }[] {
-  const content = (response as { content: { text: string }[] }).content;
-  const parsed = JSON.parse(content[0].text);
+  const r = response as { isError?: boolean; content?: { text?: string }[] };
+  if (r.isError) throw new Error(`Tool call returned an error: ${JSON.stringify(response)}`);
+  const text = r.content?.[0]?.text;
+  if (typeof text !== "string") throw new Error(`Malformed tool response, no content[0].text: ${JSON.stringify(response)}`);
+  const parsed = JSON.parse(text);
+  if (!Array.isArray(parsed.results)) throw new Error(`Response has no results array: ${text}`);
   return parsed.results as { Object_ID: number }[];
 }
 

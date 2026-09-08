@@ -367,6 +367,55 @@ describe("ea_search", () => {
     const data = res.json();
     expect(data.totalMatched).toBe(3);
   });
+
+  it("rejects a call where one term is whitespace-only even though another term is valid", async () => {
+    const res = await callTool("ea_search", { requiredTerms: ["osoba", "   "] });
+    const data = res.json();
+    expect(data.results).toEqual([]);
+    expect(data.error).toContain("empty");
+  });
+
+  it("treats a duplicate required term as redundant rather than double-counting it", async () => {
+    // A term repeated in requiredTerms must not change the match set or crash on coverage/phrase
+    // scoring — it collapses to the same single-term result "osoba" alone would produce.
+    const deduped = await callTool("ea_search", { requiredTerms: ["osoba", "osoba"] });
+    const single = await callTool("ea_search", { requiredTerms: ["osoba"] });
+    expect(deduped.json()).toEqual(single.json());
+  });
+
+  it("rejects an alternatives list over the term cap, on both boostAnyOf and andAnyOf", async () => {
+    const boostOverCap = await callTool("ea_search", { requiredTerms: ["osoba"], boostAnyOf: Array(11).fill("x") });
+    expect(boostOverCap.isError).toBe(true);
+
+    const andOverCap = await callTool("ea_search_and_any_of", { requiredTerms: ["osoba"], andAnyOf: Array(11).fill("x") });
+    expect(andOverCap.isError).toBe(true);
+  });
+
+  it("combines a multi-term conjunction with an objectType filter", async () => {
+    // Both terms exist together only on object 13 ("Vydanie povolenia"), a UseCase; restricting
+    // to a different object type must exclude it despite the conjunction otherwise matching.
+    const matching = await callTool("ea_search", { requiredTerms: ["vydanie", "povolen"], objectType: "UseCase" });
+    expect(matching.json().results.map((r: any) => r.Object_ID)).toEqual([13, 14, 15]);
+
+    const excluded = await callTool("ea_search", { requiredTerms: ["vydanie", "povolen"], objectType: "Class" });
+    expect(excluded.json().totalMatched).toBe(0);
+  });
+
+  it("keeps the multi-term ranking order stable across a paginated walk", async () => {
+    const first = await callTool("ea_search", { requiredTerms: ["vydanie", "povolen"], limit: 1 });
+    const firstData = first.json();
+    expect(firstData.results.map((r: any) => r.Object_ID)).toEqual([13]);
+    expect(firstData.truncated).toBe(true);
+
+    const second = await callTool("ea_search", firstData.continuation.arguments);
+    const secondData = second.json();
+    expect(secondData.results.map((r: any) => r.Object_ID)).toEqual([14]);
+
+    const third = await callTool("ea_search", secondData.continuation.arguments);
+    const thirdData = third.json();
+    expect(thirdData.results.map((r: any) => r.Object_ID)).toEqual([15]);
+    expect(thirdData.truncated).toBe(false);
+  });
 });
 
 // ─── ea_get_element ───
