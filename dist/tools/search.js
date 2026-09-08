@@ -345,11 +345,12 @@ function collectEvidence(db, entries, rows, windowIds, foldedTerms) {
     return evidence;
 }
 export function configureSearchTools(server, model) {
-    server.tool("ea_search", "Search Enterprise Architect model elements by name, alias, notes, attribute names/notes, operation names/notes, or constraint notes. Matching is case- and diacritic-insensitive across European Latin alphabets and sees through entity-encoded text. `requiredTerms` is a list of terms every one of which must occur somewhere in an element's searchable text (conjunction) — terms need not share a field, but sharing one ranks higher; each term is matched as a contiguous substring exactly as a single term is, so a term carrying whitespace is a phrase and is never split. A one-entry list behaves exactly as a single search term always has. Matching elements are returned in `results`, strongest match first, each with a decoded note preview and a truncation flag; equally strong matches fall back to the model's internal identity, a stable but artificial order. Each result also carries `matches`, the evidence for why it was returned: the field that matched, the id and name of the attribute, operation or constraint it came from, and a snippet of the author's own text around the match. Evidence is strongest-first and capped, and `_meta.matches` on the result reports how many matches were found and how many were withheld. The note preview centres on the match when the element's own note is what matched. `packageScope` restricts results to a package (given as its id or its name) and its descendants. Walk a large result set with `offset` rather than a larger `limit`; while rows remain, `continuation` names the next call. When far more elements match than one window can hold, `breakdown` reports how they distribute — by `objectType`, `stereotype`, or, unless already scoped, by `packageScope` (reported as the matching package's id, which the next call can pass straight back) — so the next call can narrow instead of paging.", {
+    server.tool("ea_search", "Search Enterprise Architect model elements by name, alias, notes, attribute names/notes, operation names/notes, or constraint notes. Matching is case- and diacritic-insensitive across European Latin alphabets and sees through entity-encoded text. `requiredTerms` is a list of terms every one of which must occur somewhere in an element's searchable text (conjunction) — terms need not share a field, but sharing one ranks higher; each term is matched as a contiguous substring exactly as a single term is, so a term carrying whitespace is a phrase and is never split. A one-entry list behaves exactly as a single search term always has. When no element matches, `termMatches` reports, per supplied term, whether that term matched anywhere in the corpus at all — so a caller can tell which term emptied the result rather than re-guessing the whole call. Matching elements are returned in `results`, strongest match first, each with a decoded note preview and a truncation flag; equally strong matches fall back to the model's internal identity, a stable but artificial order. Each result also carries `matches`, the evidence for why it was returned: the field that matched, the id and name of the attribute, operation or constraint it came from, and a snippet of the author's own text around the match. Evidence is strongest-first and capped, and `_meta.matches` on the result reports how many matches were found and how many were withheld. The note preview centres on the match when the element's own note is what matched. `packageScope` restricts results to a package (given as its id or its name) and its descendants. Walk a large result set with `offset` rather than a larger `limit`; while rows remain, `continuation` names the next call. When far more elements match than one window can hold, `breakdown` reports how they distribute — by `objectType`, `stereotype`, or, unless already scoped, by `packageScope` (reported as the matching package's id, which the next call can pass straight back) — so the next call can narrow instead of paging.", {
         requiredTerms: z
             .array(z.string())
             .min(1)
-            .describe("Terms every one of which must occur somewhere in the element's searchable text (names, notes, aliases, attributes, operations, constraints); terms need not share a field"),
+            .max(10)
+            .describe("Terms every one of which must occur somewhere in the element's searchable text (names, notes, aliases, attributes, operations, constraints); terms need not share a field; capped at 10"),
         objectType: z
             .string()
             .optional()
@@ -421,6 +422,13 @@ export function configureSearchTools(server, model) {
                     matchMap.set(objectId, match);
             }
             if (matchMap.size === 0) {
+                // R6: a caller guessing at stems cannot tell which one emptied the result without
+                // this — report each supplied term's own corpus-wide presence, independent of the
+                // others, rather than leaving them to re-guess the whole call.
+                const termMatches = requiredTerms.map((term) => {
+                    const folded = foldText(term).trim();
+                    return { term, matchedAnywhere: folded.length > 0 && entries.some((e) => e.foldedText.includes(folded)) };
+                });
                 return {
                     content: [{
                             type: "text",
@@ -430,6 +438,7 @@ export function configureSearchTools(server, model) {
                                 returned: 0,
                                 offset,
                                 truncated: false,
+                                termMatches,
                                 _meta: { sourceTables: ["t_object", "t_attribute", "t_operation", "t_objectconstraint", "t_package"] },
                             }, null, 2),
                         }],

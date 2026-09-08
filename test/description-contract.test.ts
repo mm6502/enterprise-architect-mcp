@@ -50,6 +50,8 @@ const SAMPLE_CALLS: [string, Record<string, unknown>][] = [
   ["ea_search", { requiredTerms: ["zmlúv"] }],
   // A window that truncates, so the continuation and breakdown branches are inspected too.
   ["ea_search", { requiredTerms: ["a"], limit: 1 }],
+  // No match, so the per-term termMatches diagnostic (R6) is inspected too.
+  ["ea_search", { requiredTerms: ["zzznoexistterm123", "zmlúv"] }],
   ["ea_get_element", { elementId: 1 }],
   ["ea_list_elements", { packageId: 3 }],
   ["ea_list_elements", { packageId: 3, limit: 1 }],

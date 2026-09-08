@@ -323,6 +323,26 @@ describe("ea_search", () => {
     // even though the rank within that field differs term-adjacency to term-adjacency.
     expect(data.results.every((r: any) => r.matchedIn === "t_object.Name")).toBe(true);
   });
+
+  // ─── U13: term cap and per-term empty-result diagnostic (R5, R6) ───
+
+  it("accepts a call at the term cap and rejects one entry over it (R5)", async () => {
+    const atCap = await callTool("ea_search", { requiredTerms: Array(10).fill("osoba") });
+    expect(atCap.isError).toBeFalsy();
+
+    const overCap = await callTool("ea_search", { requiredTerms: Array(11).fill("osoba") });
+    expect(overCap.isError).toBe(true);
+  });
+
+  it("reports each required term's own corpus-wide match status when nothing matches (R6)", async () => {
+    const res = await callTool("ea_search", { requiredTerms: ["osoba", "zzznoexistterm123"] });
+    const data = res.json();
+    expect(data.results).toEqual([]);
+    expect(data.termMatches).toEqual([
+      { term: "osoba", matchedAnywhere: true },
+      { term: "zzznoexistterm123", matchedAnywhere: false },
+    ]);
+  });
 });
 
 // ─── ea_get_element ───
