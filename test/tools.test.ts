@@ -324,6 +324,19 @@ describe("ea_search", () => {
     expect(data.results.every((r: any) => r.matchedIn === "t_object.Name")).toBe(true);
   });
 
+  it("breaks a rank/coverage tie by the tightest cluster of every term, not a repeated term's first occurrence (R10)", async () => {
+    // Object 16's note repeats "termP1" once far from "termP2" and once right beside it; object
+    // 17 has exactly one occurrence of each, spread apart by the same filler width. Both tie on
+    // rank (t_object.Note) and coverage (fixture pads them to equal length) — only a correct
+    // tightest-cluster proximity puts 16 first. Measuring from each term's first occurrence
+    // instead (the bug this regression-tests) would score object 16 as far *less* proximate
+    // than it really is and rank object 17 first instead.
+    const res = await callTool("ea_search", { requiredTerms: ["termP1", "termP2"] });
+    const data = res.json();
+    expect(data.totalMatched).toBe(2);
+    expect(data.results.map((r: any) => r.Object_ID)).toEqual([16, 17]);
+  });
+
   // ─── U13: term cap and per-term empty-result diagnostic (R5, R6) ───
 
   it("accepts a call at the term cap and rejects one entry over it (R5)", async () => {

@@ -97,6 +97,25 @@ export function createTestDb(): TestDb {
   insertObj.run(15, "UseCase", "Odvydanie s povolenkou", null, null, 2,
     null, "Approved", "admin", "{OBJ-0015}");
 
+  // Proximity tiebreak regression shape (R10, cloud review 2026-09-08): a required term that
+  // repeats must not report the distance to its own *first* occurrence when a much tighter
+  // cluster of every term exists elsewhere in the same note. Object 16's note repeats "termP1"
+  // once far from "termP2" and once immediately beside it; object 17's note has exactly one
+  // occurrence of each, spread apart by the same filler width. Both tie on rank (t_object.Note)
+  // and, once padded to equal length below, on coverage too — proximity is the only thing that
+  // can tell them apart, and only the tight cluster in object 16 should win.
+  {
+    const filler = "x".repeat(80);
+    let note16 = `termP1 ${filler} termP1 zz termP2`;
+    let note17 = `termP1 ${filler} termP2`;
+    if (note16.length > note17.length) note17 += "y".repeat(note16.length - note17.length);
+    else if (note17.length > note16.length) note16 += "y".repeat(note17.length - note16.length);
+    insertObj.run(16, "Class", "Proximity tight cluster", null, null, 2,
+      note16, "Approved", "admin", "{OBJ-0016}");
+    insertObj.run(17, "Class", "Proximity spread apart", null, null, 2,
+      note17, "Approved", "admin", "{OBJ-0017}");
+  }
+
   // --- Seed attributes with ea_guid (for R1 feature link resolution) ---
   const insertAttr = db.prepare(
     `INSERT INTO t_attribute (ID, Object_ID, Name, Type, Scope, Stereotype, Notes, LowerBound, UpperBound, "Default", Pos, ea_guid)
