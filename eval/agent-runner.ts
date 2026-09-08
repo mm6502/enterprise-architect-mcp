@@ -114,6 +114,13 @@ export function totalToolCalls(events: ParsedEvent[]): number {
   return extractToolCalls(events).length;
 }
 
+/** The search-tool calls a run actually issued, arguments included — R20's replay input. */
+export function extractSearchCalls(events: ParsedEvent[]): Array<{ tool: string; arguments: unknown }> {
+  return extractToolCalls(events)
+    .filter((c) => c.mcpToolName === "ea_search" || c.mcpToolName === "ea_search_and_any_of")
+    .map((c) => ({ tool: c.mcpToolName!, arguments: c.arguments }));
+}
+
 export interface RunOutcome {
   exitCode: number | null;
   premiumRequests: number | null;
