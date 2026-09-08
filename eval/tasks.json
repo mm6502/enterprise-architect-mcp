@@ -88,6 +88,37 @@
     ]
   },
   {
+    "id": "search-08-conjunction-cross-field",
+    "tool": "ea_search",
+    "description": "Two required terms, satisfiable only together, find the one element whose operation notes carry both (a single term could not)",
+    "args": { "requiredTerms": ["zmluvu", "dodávateľa"] },
+    "assertions": [
+      { "type": "equals", "path": "totalMatched", "expected": 1 },
+      { "type": "equals", "path": "results[0].Object_ID", "expected": 141 },
+      { "type": "equals", "path": "results[0].matchedIn", "expected": "t_operation.Notes" }
+    ]
+  },
+  {
+    "id": "search-09-boost-any-of",
+    "tool": "ea_search",
+    "description": "boostAnyOf reorders both duplicate-named elements ahead of their identity tiebreak without excluding either",
+    "args": { "requiredTerms": ["dodávateľ"], "boostAnyOf": ["aplikačnom"] },
+    "assertions": [
+      { "type": "equals", "path": "results[0].Object_ID", "expected": 122 },
+      { "type": "equals", "path": "results[1].Object_ID", "expected": 121 }
+    ]
+  },
+  {
+    "id": "search-10-and-any-of-narrows",
+    "tool": "ea_search_and_any_of",
+    "description": "andAnyOf on the sibling tool narrows to only the element also matching the alternative, unlike ea_search's boostAnyOf",
+    "args": { "requiredTerms": ["dodávateľ"], "andAnyOf": ["aplikačnom"] },
+    "assertions": [
+      { "type": "equals", "path": "totalMatched", "expected": 1 },
+      { "type": "equals", "path": "results[0].Object_ID", "expected": 122 }
+    ]
+  },
+  {
     "id": "resolve-01-exact-beats-prefix",
     "tool": "ea_resolve",
     "description": "An exact name is returned alone, never diluted by the element that only starts with it",
