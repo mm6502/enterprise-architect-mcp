@@ -172,12 +172,6 @@ not open is never remembered, so asking again is enough to correct a mistyped an
 | `ea_get_schema` | Introspect the model's database schema — tables, columns, indexes, rowid alias. |
 | `ea_get_model_info` | Identity of the open export — file name, size, modification date, server version, and which configuration source the path came from. |
 
-> **Breaking change (v3.0.0):** `ea_search` no longer accepts a bare `query` string. Callers now send
-> `requiredTerms` — a list of terms, every one required (a one-entry list behaves exactly as the old
-> single-term `query` did). The old string shape is rejected by schema validation rather than silently
-> reinterpreted. A new tool, `ea_search_and_any_of`, adds a required-and-alternative narrowing filter
-> alongside `ea_search`'s own rank-boosting `boostAnyOf`.
-
 ### Response contract
 
 Every tool returns structured JSON with:
@@ -230,4 +224,3 @@ next call can pass straight back) — rather than to page through thousands of r
 Copyright (c) 2026 Michal Mracka
 
 Licensed under the EUPL — see [LICENSE](LICENSE) for the full text.
-
