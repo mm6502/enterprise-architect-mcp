@@ -194,7 +194,12 @@ function matchObject(objEntries: CorpusEntry[], foldedTerms: string[]): { rank: 
   for (const e of objEntries) {
     if (!foldedTerms.every((t) => e.foldedText.includes(t))) continue;
     const { rank, coverage, proximity } = scoreMultiMatch(e, foldedTerms);
-    if (!best || rank < best.rank || (rank === best.rank && coverage > best.coverage)) {
+    const better =
+      !best ||
+      rank < best.rank ||
+      (rank === best.rank && coverage > best.coverage) ||
+      (rank === best.rank && coverage === best.coverage && proximity < best.proximity);
+    if (better) {
       best = { rank, coverage, proximity, matchedIn: `${e.sourceTable}.${e.sourceField}` };
     }
   }
@@ -452,7 +457,7 @@ async function runSearch(
           offset,
           truncated: false,
           _meta: { sourceTables: ["t_object", "t_attribute", "t_operation", "t_objectconstraint", "t_package"] },
-          error: "requiredTerms is empty after normalization.",
+          error: "At least one requiredTerms entry is empty after normalization (whitespace-only or blank).",
         }, null, 2) }],
       };
     }
