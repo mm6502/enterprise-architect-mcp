@@ -37,7 +37,8 @@ async function callTool(name: string, args: Record<string, unknown> = {}) {
 
 // Valid calls that should return structured JSON with _meta
 const validCalls: [string, Record<string, unknown>][] = [
-  ["ea_search", { query: "zmlúv" }],
+  ["ea_search", { requiredTerms: ["zmlúv"] }],
+  ["ea_search_and_any_of", { requiredTerms: ["zmlúv"] }],
   ["ea_get_element", { elementId: 1 }],
   ["ea_list_elements", { packageId: 3 }],
   ["ea_get_connectors", { elementId: 1 }],
@@ -67,7 +68,7 @@ const notFoundCalls: [string, Record<string, unknown>][] = [
 const emptyCalls: [string, Record<string, unknown>][] = [
   ["ea_get_connectors", { elementId: 4 }], // element exists, no connectors
   ["ea_get_scenarios", { elementId: 2 }], // element exists, no scenarios
-  ["ea_search", { query: "xyzzy_nonexistent_term_12345" }],
+  ["ea_search", { requiredTerms: ["xyzzy_nonexistent_term_12345"] }],
 ];
 
 describe("Response shape contract — valid calls", () => {
@@ -110,7 +111,7 @@ describe("Response shape contract — empty results are structured, not text", (
  * results, because every other tool returns a set small enough to hand over whole.
  * Driven off validCalls so a tool added later is covered the day it appears.
  */
-const PAGED_TOOLS = new Set(["ea_search", "ea_list_elements", "ea_list_diagrams"]);
+const PAGED_TOOLS = new Set(["ea_search", "ea_search_and_any_of", "ea_list_elements", "ea_list_diagrams"]);
 
 describe("Response shape contract — the window stays with the enumeration tools", () => {
   test.each(validCalls.filter(([tool]) => !PAGED_TOOLS.has(tool)))(

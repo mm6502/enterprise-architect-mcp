@@ -3,7 +3,7 @@
     "id": "search-01-exact-name",
     "tool": "ea_search",
     "description": "An exact name outranks an element whose name merely contains the term",
-    "args": { "query": "Zmluva" },
+    "args": { "requiredTerms": ["Zmluva"] },
     "assertions": [
       { "type": "equals", "path": "totalMatched", "expected": 2 },
       { "type": "equals", "path": "results[0].Object_ID", "expected": 120 },
@@ -15,7 +15,7 @@
     "id": "search-02-entity-encoded-note",
     "tool": "ea_search",
     "description": "A term stored only entity-encoded is still found",
-    "args": { "query": "záväzok" },
+    "args": { "requiredTerms": ["záväzok"] },
     "assertions": [
       { "type": "equals", "path": "totalMatched", "expected": 1 },
       { "type": "equals", "path": "results[0].Object_ID", "expected": 123 },
@@ -26,7 +26,7 @@
     "id": "search-03-diacritics-folded",
     "tool": "ea_search",
     "description": "The same term without diacritics reaches the same element",
-    "args": { "query": "zavazok" },
+    "args": { "requiredTerms": ["zavazok"] },
     "assertions": [
       { "type": "equals", "path": "totalMatched", "expected": 1 },
       { "type": "equals", "path": "results[0].Object_ID", "expected": 123 }
@@ -36,7 +36,7 @@
     "id": "search-04-note-preview-truncated",
     "tool": "ea_search",
     "description": "A long note is previewed and flagged as cut short",
-    "args": { "query": "dodatky" },
+    "args": { "requiredTerms": ["dodatky"] },
     "assertions": [
       { "type": "equals", "path": "totalMatched", "expected": 1 },
       { "type": "equals", "path": "results[0].Object_ID", "expected": 130 },
@@ -47,7 +47,7 @@
     "id": "search-05-type-filter",
     "tool": "ea_search",
     "description": "The type filter keeps only classes, and name matches rank above a note mention",
-    "args": { "query": "Dodávateľ", "objectType": "Class" },
+    "args": { "requiredTerms": ["Dodávateľ"], "objectType": "Class" },
     "assertions": [
       { "type": "equals", "path": "totalMatched", "expected": 3 },
       { "type": "equals", "path": "results[0].Object_ID", "expected": 121 },
@@ -60,7 +60,7 @@
     "id": "search-06-match-evidence-single-attribute",
     "tool": "ea_search",
     "description": "A match found only in an attribute's notes names the attribute and quotes its text",
-    "args": { "query": "číslo zmluvy" },
+    "args": { "requiredTerms": ["číslo zmluvy"] },
     "assertions": [
       { "type": "equals", "path": "totalMatched", "expected": 1 },
       { "type": "equals", "path": "results[0].Object_ID", "expected": 120 },
@@ -76,7 +76,7 @@
     "id": "search-07-match-evidence-capped",
     "tool": "ea_search",
     "description": "An element matching in several fields lists its evidence in ladder order and reports what it withheld",
-    "args": { "query": "zmluv", "objectType": "Class" },
+    "args": { "requiredTerms": ["zmluv"], "objectType": "Class" },
     "assertions": [
       { "type": "equals", "path": "totalMatched", "expected": 4 },
       { "type": "equals", "path": "results[0].Object_ID", "expected": 120 },
@@ -85,6 +85,37 @@
       { "type": "equals", "path": "results[0].matches[2].matchedIn", "expected": "t_attribute.Name" },
       { "type": "equals", "path": "results[0].matches[2].sourceId", "expected": 210 },
       { "type": "equals", "path": "results[0]._meta.matches", "expected": { "totalMatched": 6, "returned": 3, "truncated": true } }
+    ]
+  },
+  {
+    "id": "search-08-conjunction-cross-field",
+    "tool": "ea_search",
+    "description": "Two required terms, satisfiable only together, find the one element whose operation notes carry both (a single term could not)",
+    "args": { "requiredTerms": ["zmluvu", "dodávateľa"] },
+    "assertions": [
+      { "type": "equals", "path": "totalMatched", "expected": 1 },
+      { "type": "equals", "path": "results[0].Object_ID", "expected": 141 },
+      { "type": "equals", "path": "results[0].matchedIn", "expected": "t_operation.Notes" }
+    ]
+  },
+  {
+    "id": "search-09-boost-any-of",
+    "tool": "ea_search",
+    "description": "boostAnyOf reorders both duplicate-named elements ahead of their identity tiebreak without excluding either",
+    "args": { "requiredTerms": ["dodávateľ"], "boostAnyOf": ["aplikačnom"] },
+    "assertions": [
+      { "type": "equals", "path": "results[0].Object_ID", "expected": 122 },
+      { "type": "equals", "path": "results[1].Object_ID", "expected": 121 }
+    ]
+  },
+  {
+    "id": "search-10-and-any-of-narrows",
+    "tool": "ea_search_and_any_of",
+    "description": "andAnyOf on the sibling tool narrows to only the element also matching the alternative, unlike ea_search's boostAnyOf",
+    "args": { "requiredTerms": ["dodávateľ"], "andAnyOf": ["aplikačnom"] },
+    "assertions": [
+      { "type": "equals", "path": "totalMatched", "expected": 1 },
+      { "type": "equals", "path": "results[0].Object_ID", "expected": 122 }
     ]
   },
   {

@@ -23,6 +23,7 @@ import {
   countToolCalls,
   totalToolCalls,
   getRunOutcome,
+  extractSearchCalls,
 } from "./agent-runner.js";
 
 export interface CampaignTask {
@@ -62,6 +63,7 @@ interface CampaignRunRecord {
   serverScopeOk: boolean;
   modelInfo: { called: boolean; matchesExpected: boolean; actualFileName?: string };
   finalAnswerExcerpt: string;
+  searchCalls: Array<{ tool: string; arguments: unknown }>;
   error?: string;
 }
 
@@ -157,6 +159,7 @@ async function main() {
               serverScopeOk: scope.ok,
               modelInfo,
               finalAnswerExcerpt: extractFinalAnswer(raw),
+              searchCalls: extractSearchCalls(events),
             };
             if (!scope.ok) console.error(`  ! unexpected servers: ${scope.unexpectedServers.join(", ")}`);
           } catch (err) {
@@ -172,6 +175,7 @@ async function main() {
               serverScopeOk: false,
               modelInfo: { called: false, matchesExpected: false },
               finalAnswerExcerpt: "",
+              searchCalls: [],
               error: err instanceof Error ? err.message : String(err),
             };
             console.error(`  ! error: ${record.error}`);
