@@ -253,7 +253,7 @@ const EA_TOOL_NAMES = [
  * neither a shell nor this escaping.
  */
 function quoteArg(arg: string): string {
-  return /[\s"]/.test(arg) ? `"${arg.replace(/"/g, '\\"')}"` : arg;
+  return /[\s"]/.test(arg) ? `"${arg.replace(/[\\"]/g, "\\$&")}"` : arg;
 }
 
 function spawnCli(bin: string, args: string[]) {
