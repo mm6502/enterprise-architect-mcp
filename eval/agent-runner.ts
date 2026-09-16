@@ -252,8 +252,8 @@ const EA_TOOL_NAMES = [
  * triggers only when shell is true *and* the args list is non-empty). Non-Windows needs
  * neither a shell nor this escaping.
  */
-function quoteArg(arg: string): string {
-  return /[\s"]/.test(arg) ? `"${arg.replace(/[\\"]/g, "\\$&")}"` : arg;
+export function quoteArg(arg: string): string {
+  return /[\s"&()<>^|]/.test(arg) ? `"${arg.replace(/[\\"]/g, "\\$&")}"` : arg;
 }
 
 function spawnCli(bin: string, args: string[]) {
@@ -290,4 +290,3 @@ export function runAgentTask(prompt: string, config: AgentRunConfig): Promise<{ 
 }
 
 // ─── CLI entrypoint: one task, one model, one build — a smoke run, not the R19 campaign ───
-
