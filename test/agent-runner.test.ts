@@ -14,6 +14,7 @@ import {
   checkServerScope,
   checkModelInfo,
   buildMcpConfig,
+  quoteArg,
 } from "../eval/agent-runner.js";
 
 function line(obj: unknown): string {
@@ -155,5 +156,19 @@ describe("buildMcpConfig", () => {
       args: ["/build/dist/index.js", "/tmp/model.qea"],
       tools: ["*"],
     });
+  });
+});
+
+describe("quoteArg", () => {
+  it("leaves a cmd-safe argument unchanged", () => {
+    expect(quoteArg("plain-arg")).toBe("plain-arg");
+  });
+
+  it("quotes and escapes embedded backslashes, quotes, and a trailing backslash", () => {
+    expect(quoteArg('C:\\Program Files\\"Copilot"\\"')).toBe('"C:\\\\Program Files\\\\\\"Copilot\\"\\\\\\\""');
+  });
+
+  it.each(["a&b", "a|b", "a>b", "a<b", "(a)"])("quotes shell metacharacter input %s", (arg) => {
+    expect(quoteArg(arg)).toBe(`"${arg}"`);
   });
 });
