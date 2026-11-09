@@ -4,12 +4,12 @@ import { z } from "zod";
  * so the response describes its shape instead of only sampling it.
  */
 export declare const BREAKDOWN_LIMIT_FACTOR = 10;
-export declare const offsetParam: z.ZodDefault<z.ZodNumber>;
+export declare const offsetParam: z.ZodDefault<z.ZodCoercedNumber<unknown>>;
 /**
  * A window of zero or fewer rows cannot advance, so a continuation built from it would
  * repeat the same call forever — and a negative LIMIT makes SQLite return every row.
  */
-export declare const limitParam: (fallback: number) => z.ZodDefault<z.ZodNumber>;
+export declare const limitParam: (fallback: number) => z.ZodDefault<z.ZodCoercedNumber<unknown>>;
 export declare function isTruncated(offset: number, returned: number, totalMatched: number): boolean;
 export declare function buildContinuation<T extends Record<string, unknown>>(tool: string, args: T, offset: number, returned: number, totalMatched: number): {
     tool: string;
